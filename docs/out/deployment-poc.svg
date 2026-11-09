@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720">
+  <title>POC deployment on .212</title>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="40" y="34" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" text-anchor="start" fill="#18181b">saturn (192.168.88.212) · Ubuntu 22.04 · RTX 3090 24 GB · 16 cores · 62 GB</text>
+  <rect x="30" y="46" width="830" height="640" rx="14" fill="#fbfbfc" stroke="#3f3f46" stroke-width="2"/>
+  <rect x="60" y="80" width="360" height="100" rx="8" fill="#ffffff" stroke="#71717a" stroke-width="1.5"/>
+  <text x="240.0" y="111.25" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#18181b">manhattan-logic (existing)</text>
+  <text x="240.0" y="127.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">Claude bot on the 212 number</text>
+  <text x="240.0" y="143.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">signal-cli 0.14.9 native · --http :18080</text>
+  <text x="240.0" y="158.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">stopped while the gateway owns the account</text>
+  <rect x="460" y="80" width="370" height="100" rx="8" fill="#f3ecfe" stroke="#6d28d9" stroke-width="1.5"/>
+  <rect x="784.4" y="72" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="803.2" y="84" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="645.0" y="111.25" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#6d28d9">voitta-ask</text>
+  <text x="645.0" y="127.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">screen voitta-ask · 127.0.0.1:8791</text>
+  <text x="645.0" y="143.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">Piper en_US-lessac-medium (CPU)</text>
+  <text x="645.0" y="158.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">faster-whisper small (GPU, int8_float16)</text>
+  <rect x="60" y="230" width="360" height="110" rx="8" fill="#fdf2f8" stroke="#be185d" stroke-width="1.5"/>
+  <rect x="374.4" y="222" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="393.2" y="234" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="240.0" y="266.25" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#be185d">voitta-gateway</text>
+  <text x="240.0" y="282.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">screen voitta-test · venv · 127.0.0.1:8700</text>
+  <text x="240.0" y="298.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">SQLite event log · route &quot;ask&quot;</text>
+  <text x="240.0" y="313.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">spawns signal-cli; dies with it (PDEATHSIG)</text>
+  <rect x="460" y="230" width="370" height="110" rx="8" fill="#eaf1fe" stroke="#1d4ed8" stroke-width="1.5"/>
+  <rect x="784.4" y="222" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="803.2" y="234" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="645.0" y="266.25" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#1d4ed8">signal-cli 0.14.9 (JVM build)</text>
+  <text x="645.0" y="282.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">bundled JRE 25 · --tcp :7583</text>
+  <text x="645.0" y="298.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">receive-mode manual · call events</text>
+  <text x="645.0" y="313.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">native 0.14.9 cannot place calls (#2144)</text>
+  <rect x="60" y="390" width="360" height="100" rx="8" fill="#e7f6ee" stroke="#047857" stroke-width="1.5"/>
+  <rect x="374.4" y="382" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="393.2" y="394" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="240.0" y="421.25" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#047857">PulseAudio (user session)</text>
+  <text x="240.0" y="437.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">per-call null sinks:</text>
+  <text x="240.0" y="453.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">signal_input_&lt;id&gt; · signal_output_&lt;id&gt;</text>
+  <text x="240.0" y="468.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">gateway: parec / pacat at 48 kHz</text>
+  <rect x="460" y="390" width="370" height="100" rx="8" fill="#e7f6ee" stroke="#047857" stroke-width="1.5"/>
+  <rect x="765.2" y="382" width="56.8" height="16" rx="8" fill="#b45309"/>
+  <text x="793.6" y="394" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PARTIAL</text>
+  <text x="645.0" y="421.25" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#047857">signal-call-tunnel</text>
+  <text x="645.0" y="437.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">RingRTC 2.65.1: has CVE-2026-113380</text>
+  <text x="645.0" y="453.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">(its patches do not apply to &gt;= 2.72)</text>
+  <text x="645.0" y="468.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">not on PATH: only the gateway uses it</text>
+  <rect x="60" y="540" width="770" height="70" rx="8" fill="#f4f4f5" stroke="#52525b" stroke-width="1.5"/>
+  <text x="445.0" y="571.75" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#52525b">~/.local/share/signal-cli · account +1 212 707 1132 (primary device)</text>
+  <text x="445.0" y="588.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">one daemon at a time: manhattan-logic&#x27;s OR the gateway&#x27;s (switch: stop one, start the other)</text>
+  <polyline points="600,180 300,230" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="300,230 307.5,225.0 308.7,232.3" fill="#3f3f46"/>
+  <polygon points="600,180 592.5,185.0 591.3,177.7" fill="#3f3f46"/>
+  <rect x="402.9" y="190.0" width="94.2" height="16" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="450" y="200" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">API + media WS</text>
+  <polyline points="420,285 460,285" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="460,285 451.8,288.7 451.8,281.3" fill="#3f3f46"/>
+  <polygon points="420,285 428.2,281.3 428.2,288.7" fill="#3f3f46"/>
+  <rect x="418.4" y="264.5" width="43.3" height="15.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="440" y="274" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">spawns</text>
+  <polyline points="645,340 645,390" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="645,390 641.3,381.8 648.7,381.8" fill="#3f3f46"/>
+  <rect x="661.4" y="358.0" width="57.3" height="16" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="690" y="368" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">per call</text>
+  <polyline points="460,440 420,440" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="420,440 428.2,436.3 428.2,443.7" fill="#047857"/>
+  <polygon points="460,440 451.8,443.7 451.8,436.3" fill="#047857"/>
+  <polyline points="240,340 240,390" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="240,390 236.3,381.8 243.7,381.8" fill="#047857"/>
+  <polygon points="240,340 243.7,348.2 236.3,348.2" fill="#047857"/>
+  <rect x="256.0" y="358.0" width="88.1" height="16" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="300" y="368" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#047857">parec / pacat</text>
+  <polyline points="60,130 44,130 44,575 60,575" fill="none" stroke="#a1a1aa" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="6 4"/>
+  <polyline points="830,300 846,300 846,575 830,575" fill="none" stroke="#a1a1aa" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="6 4"/>
+  <polygon points="830,575 838.2,571.3 838.2,578.7" fill="#a1a1aa"/>
+  <rect x="44.0" y="510.5" width="31.5" height="15.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="48" y="520" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="start" fill="#52525b">uses</text>
+  <rect x="814.5" y="510.5" width="31.5" height="15.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="842" y="520" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="end" fill="#52525b">uses</text>
+  <text x="445" y="650" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="middle" fill="#52525b" font-style="italic">switch: stop manhattan-logic -&gt; start gateway -&gt; call -&gt; stop gateway -&gt; ./start.sh  (~1 min)</text>
+  <text x="1025" y="74" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#52525b">Outside</text>
+  <rect x="900" y="90" width="250" height="80" rx="8" fill="#ffffff" stroke="#27272a" stroke-width="1.5"/>
+  <text x="1025.0" y="126.75" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#18181b">Client</text>
+  <text x="1025.0" y="143.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">ssh + curl or examples/ask.py</text>
+  <rect x="900" y="240" width="250" height="80" rx="8" fill="#ffffff" stroke="#27272a" stroke-width="1.5"/>
+  <text x="1025.0" y="276.75" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#18181b">Signal servers</text>
+  <text x="1025.0" y="293.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">messages · call signalling · TURN</text>
+  <rect x="900" y="400" width="250" height="80" rx="8" fill="#ffffff" stroke="#27272a" stroke-width="1.5"/>
+  <text x="1025.0" y="436.75" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#18181b">Callees</text>
+  <text x="1025.0" y="453.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">Roman · Nadya (Signal app)</text>
+  <polyline points="900,130 830,130" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="830,130 838.2,126.3 838.2,133.7" fill="#3f3f46"/>
+  <rect x="821.0" y="110.0" width="88.1" height="16" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="865" y="120" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">POST /v1/asks</text>
+  <polyline points="830,270 900,270" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="900,270 891.8,273.7 891.8,266.3" fill="#3f3f46"/>
+  <polygon points="830,270 838.2,266.3 838.2,273.7" fill="#3f3f46"/>
+  <polyline points="830,440 870,440 870,300 900,300" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="900,300 891.8,303.7 891.8,296.3" fill="#047857"/>
+  <polygon points="830,440 838.2,436.3 838.2,443.7" fill="#047857"/>
+  <rect x="835.2" y="370.0" width="69.6" height="16" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="870" y="380" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#047857">SRTP audio</text>
+  <polyline points="1025,320 1025,400" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="1025,400 1021.3,391.8 1028.7,391.8" fill="#3f3f46"/>
+  <polygon points="1025,320 1028.7,328.2 1021.3,328.2" fill="#3f3f46"/>
+  <rect x="40.0" y="696" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="58.8" y="708" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="85.6" y="708" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built; tested end to end on real Signal calls (.212)</text>
+  <rect x="412.6" y="696" width="56.8" height="16" rx="8" fill="#b45309"/>
+  <text x="441.0" y="708" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PARTIAL</text>
+  <text x="477.36000000000007" y="708" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built in part (see text)</text>
+</svg>

@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="380" viewBox="0 0 1200 380">
+  <title>Roadmap</title>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <polygon points="30,40 226,40 244,75 226,110 30,110 48,75" fill="#e7f6ee" stroke="#047857" stroke-width="1.6"/>
+  <text x="141.0" y="80" font-family="Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" text-anchor="middle" fill="#047857">0 · Signal call spike</text>
+  <rect x="133.4" y="124" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="152.2" y="136" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="52" y="168" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• tunnel built (RingRTC 2.65.1)</text>
+  <text x="52" y="192" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• outbound calls + echo: done</text>
+  <text x="52" y="216" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• voitta-ask on real calls: done</text>
+  <text x="52" y="240" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• inbound: out of scope</text>
+  <polygon points="257,40 453,40 471,75 453,110 257,110 275,75" fill="#e7f6ee" stroke="#047857" stroke-width="1.6"/>
+  <text x="368.0" y="80" font-family="Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" text-anchor="middle" fill="#047857">1 · Phone baseline</text>
+  <rect x="347.6" y="124" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="372.8" y="136" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <text x="279" y="168" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• Telnyx adapter built</text>
+  <text x="279" y="192" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• signed webhooks + L16 media</text>
+  <text x="279" y="216" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• needs a Telnyx account</text>
+  <text x="279" y="240" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• latency vs Signal: open</text>
+  <polygon points="484,40 680,40 698,75 680,110 484,110 502,75" fill="#fff6e5" stroke="#b45309" stroke-width="1.6"/>
+  <text x="595.0" y="80" font-family="Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" text-anchor="middle" fill="#b45309">2 · Freeze the API</text>
+  <rect x="568.2" y="124" width="56.8" height="16" rx="8" fill="#b45309"/>
+  <text x="596.6" y="136" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PARTIAL</text>
+  <text x="506" y="168" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• OpenAPI + AsyncAPI v1: done</text>
+  <text x="506" y="192" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• checked in every test: done</text>
+  <text x="506" y="216" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• CallSession: 1 of 2 paths live</text>
+  <text x="506" y="240" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• client library: open</text>
+  <polygon points="711,40 907,40 925,75 907,110 711,110 729,75" fill="#eaf1fe" stroke="#1d4ed8" stroke-width="1.6"/>
+  <text x="822.0" y="80" font-family="Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" text-anchor="middle" fill="#1d4ed8">3 · Messaging adapters</text>
+  <rect x="795.2" y="124" width="56.8" height="16" rx="8" fill="#b45309"/>
+  <text x="823.6" y="136" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PARTIAL</text>
+  <text x="733" y="168" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• Signal + Slack adapters built</text>
+  <text x="733" y="192" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• tested with simulators</text>
+  <text x="733" y="216" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• manhattan-logic not switched</text>
+  <text x="733" y="240" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• voice: 212 number only</text>
+  <polygon points="938,40 1134,40 1152,75 1134,110 938,110 956,75" fill="#fafafa" stroke="#a1a1aa" stroke-width="1.6"/>
+  <text x="1049.0" y="80" font-family="Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" text-anchor="middle" fill="#a1a1aa">4 · More channels</text>
+  <rect x="1022.2" y="124" width="56.8" height="16" rx="8" fill="#9ca3af"/>
+  <text x="1050.6" y="136" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PLANNED</text>
+  <text x="960" y="168" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• WhatsApp (msg + calling)</text>
+  <text x="960" y="192" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• SMS via trunk</text>
+  <text x="960" y="216" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• Telegram / Discord</text>
+  <text x="960" y="240" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• warm transfer · conference</text>
+  <text x="600" y="296" font-family="Helvetica, Arial, sans-serif" font-size="12.5" font-weight="normal" text-anchor="middle" fill="#52525b" font-style="italic">Voice first: the CallSession interface comes from working calls, not from a design up front.</text>
+  <rect x="20.0" y="332" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="38.8" y="344" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="65.6" y="344" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built; tested end to end on real Signal calls (.212)</text>
+  <rect x="392.6" y="332" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="417.8" y="344" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <text x="450.96000000000004" y="344" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built; tested end to end against simulated platforms</text>
+  <rect x="777.9" y="332" width="56.8" height="16" rx="8" fill="#b45309"/>
+  <text x="806.3" y="344" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PARTIAL</text>
+  <text x="842.72" y="344" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built in part (see text)</text>
+  <rect x="1002.2" y="332" width="56.8" height="16" rx="8" fill="#9ca3af"/>
+  <text x="1030.6" y="344" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PLANNED</text>
+  <text x="1067.0400000000002" y="344" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">designed, not built</text>
+</svg>

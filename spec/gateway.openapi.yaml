@@ -1,0 +1,711 @@
+openapi: 3.1.0
+info:
+  title: voitta-gateway API
+  version: 1.0.0
+  description: |
+    Private command API of voitta-gateway: one API in front of Signal, Slack and the phone network.
+
+    - Every request carries `Authorization: Bearer <consumer token>`; each consumer in gateway.yaml
+      has its own token and scopes (`events:read`, `messages:send`, `calls:control`, `admin`;
+      `admin` implies all). The scope an operation needs is in `x-scope`.
+    - Errors always have the shape `Error`.
+    - Mutating commands are asynchronous: they return 202 and the outcome arrives as events
+      (see voitta.asyncapi.yaml). With `idempotency_key`, a repeated request returns the first
+      result with HTTP 200 and `duplicate: true` (keys are kept 24 h).
+    - The event stream (`GET /v1/events`, server-sent events) and the per-call media WebSocket are
+      specified in voitta.asyncapi.yaml.
+servers:
+  - url: http://127.0.0.1:8700
+    description: private listener (bind to localhost or a private network only)
+security:
+  - bearer: []
+
+paths:
+  /v1/health:
+    get:
+      operationId: health
+      summary: Liveness and per-channel connection state
+      security: []
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Health"}
+
+  /v1/channels:
+    get:
+      operationId: listChannels
+      summary: Adapters, accounts, capabilities and connection state
+      x-scope: events:read
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [channels]
+                properties:
+                  channels: {type: array, items: {$ref: "#/components/schemas/Channel"}}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/identities/{person_id}:
+    get:
+      operationId: getIdentity
+      summary: Platform addresses of a configured person
+      x-scope: events:read
+      parameters: [{name: person_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Identity"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/messages:
+    post:
+      operationId: sendMessage
+      summary: Queue a message
+      description: |
+        Replies go back to the conversation they answer: `to: {conversation_id}`. A `person_id`
+        target is for conversations the agent starts itself; the gateway then picks a channel.
+        Derive `idempotency_key` from the event being answered (e.g. `reply:evt_42`).
+        Outcome: `message.status` events (queued -> sent -> delivered -> read, or failed).
+      x-scope: messages:send
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SendMessageRequest"}
+      responses:
+        "202":
+          description: queued
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MessageQueued"}
+        "200":
+          description: duplicate of an earlier request with the same idempotency_key
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MessageQueued"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/messages/{message_id}:
+    get:
+      operationId: getMessage
+      x-scope: events:read
+      parameters: [{$ref: "#/components/parameters/MessageId"}]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MessageView"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/messages/{message_id}/edit:
+    post:
+      operationId: editMessage
+      summary: Edit one of the gateway's own messages (if the channel supports it)
+      x-scope: messages:send
+      parameters: [{$ref: "#/components/parameters/MessageId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [parts]
+              properties:
+                parts: {type: array, minItems: 1, items: {$ref: "#/components/schemas/Part"}}
+                idempotency_key: {type: string}
+      responses:
+        "202": {$ref: "#/components/responses/OperationQueued"}
+        "200": {$ref: "#/components/responses/OperationQueued"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/messages/{message_id}/delete:
+    post:
+      operationId: deleteMessage
+      summary: Delete one of the gateway's own messages for everyone (if supported)
+      x-scope: messages:send
+      parameters: [{$ref: "#/components/parameters/MessageId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                idempotency_key: {type: string}
+      responses:
+        "202": {$ref: "#/components/responses/OperationQueued"}
+        "200": {$ref: "#/components/responses/OperationQueued"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/messages/{message_id}/reactions:
+    post:
+      operationId: reactToMessage
+      summary: Add or remove a reaction (Unicode emoji; Slack names are accepted too)
+      x-scope: messages:send
+      parameters: [{$ref: "#/components/parameters/MessageId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emoji]
+              properties:
+                emoji: {type: string, minLength: 1}
+                remove: {type: boolean, default: false}
+                idempotency_key: {type: string}
+      responses:
+        "202": {$ref: "#/components/responses/OperationQueued"}
+        "200": {$ref: "#/components/responses/OperationQueued"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/conversations/{conversation_id}/typing:
+    post:
+      operationId: setTyping
+      x-scope: messages:send
+      parameters: [{name: conversation_id, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                "on": {type: boolean, default: true}
+      responses:
+        "200": {$ref: "#/components/responses/Ok"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/attachments:
+    post:
+      operationId: uploadAttachment
+      summary: Upload a file; use the returned part in sendMessage
+      x-scope: messages:send
+      parameters:
+        - {name: X-Filename, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, contentMediaType: application/octet-stream}
+      responses:
+        "200":
+          description: stored
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/FilePart"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/attachments/{attachment_id}:
+    get:
+      operationId: downloadAttachment
+      x-scope: events:read
+      parameters: [{name: attachment_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200":
+          description: the file, with its stored content type
+          content:
+            application/octet-stream:
+              schema: {type: string, contentMediaType: application/octet-stream}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/events:
+    get:
+      operationId: streamEvents
+      summary: Event stream (server-sent events); payloads in voitta.asyncapi.yaml
+      description: |
+        Each SSE message: `id:` = event id, `event:` = event type, `data:` = the event as JSON.
+        Resume without gaps with the `Last-Event-ID` header or `after`. `after=now` starts at the
+        end of the log. A cursor beyond the end of the log (from an earlier gateway database)
+        replays the current log from the start.
+      x-scope: events:read
+      parameters:
+        - {$ref: "#/components/parameters/After"}
+        - {$ref: "#/components/parameters/Types"}
+        - {name: Last-Event-ID, in: header, schema: {type: string, pattern: "^evt_[0-9]+$"}}
+      responses:
+        "200":
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema: {type: string}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/events/poll:
+    get:
+      operationId: pollEvents
+      summary: Long-poll the event log (same events as the stream)
+      x-scope: events:read
+      parameters:
+        - {$ref: "#/components/parameters/After"}
+        - {$ref: "#/components/parameters/Types"}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 1000, default: 200}}
+        - {name: wait, in: query, description: "seconds to wait for new events (max 30)",
+           schema: {type: number, minimum: 0, maximum: 30, default: 0}}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, next]
+                properties:
+                  events:
+                    type: array
+                    description: "Event objects; schema `Event` in voitta.asyncapi.yaml"
+                    items: {type: object}
+                  next: {type: string, pattern: "^evt_[0-9]+$", description: "pass as `after` next time"}
+                  reset:
+                    type: boolean
+                    description: "true when `after` was beyond the end of this log: the gateway's data was reset and the log is replayed from the start"
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/calls:
+    post:
+      operationId: startCall
+      summary: Place an outbound call; the route's agent gets the audio
+      description: |
+        The gateway connects to the route's agent media URL before dialing; the agent gets
+        `start` once the callee answers. Progress: `call.ringing`, `call.answered`, `call.ended`.
+        Emergency numbers are refused (403); opted-out recipients too (409).
+      x-scope: calls:control
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/StartCallRequest"}
+      responses:
+        "202":
+          description: dialing
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CallStarted"}
+        "200":
+          description: duplicate of an earlier request with the same idempotency_key
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CallStarted"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/calls/{call_id}:
+    get:
+      operationId: getCall
+      summary: Current or final state of a call
+      x-scope: events:read
+      parameters: [{$ref: "#/components/parameters/CallId"}]
+      responses:
+        "200": {$ref: "#/components/responses/Call"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/calls/{call_id}/answer:
+    post:
+      operationId: answerCall
+      summary: "Answer a ringing inbound call (routes with `answer: manual`)"
+      x-scope: calls:control
+      parameters: [{$ref: "#/components/parameters/CallId"}]
+      responses:
+        "200": {$ref: "#/components/responses/Call"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/calls/{call_id}/reject:
+    post:
+      operationId: rejectCall
+      x-scope: calls:control
+      parameters: [{$ref: "#/components/parameters/CallId"}]
+      responses:
+        "200": {$ref: "#/components/responses/Call"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/calls/{call_id}/hangup:
+    post:
+      operationId: hangupCall
+      summary: End a call (idempotent)
+      x-scope: calls:control
+      parameters: [{$ref: "#/components/parameters/CallId"}]
+      responses:
+        "200": {$ref: "#/components/responses/Call"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/calls/{call_id}/dtmf:
+    post:
+      operationId: sendDtmf
+      x-scope: calls:control
+      parameters: [{$ref: "#/components/parameters/CallId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [digits]
+              properties:
+                digits: {type: string, pattern: "^[0-9*#A-Dw]+$", description: "w = 0.5 s pause"}
+      responses:
+        "200": {$ref: "#/components/responses/Call"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/calls/{call_id}/transfer:
+    post:
+      operationId: transferCall
+      x-scope: calls:control
+      parameters: [{$ref: "#/components/parameters/CallId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to]
+              properties:
+                to: {type: string}
+                mode: {type: string, enum: [blind, warm], default: blind}
+      responses:
+        "200": {$ref: "#/components/responses/Call"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/calls/{call_id}/recording:
+    post:
+      operationId: controlRecording
+      summary: Not implemented yet (always 422 unsupported)
+      x-scope: calls:control
+      parameters: [{$ref: "#/components/parameters/CallId"}]
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/held:
+    get:
+      operationId: listHeld
+      summary: Messages from unknown senders, held without content until approved
+      x-scope: admin
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [held]
+                properties:
+                  held:
+                    type: array
+                    items:
+                      type: object
+                      required: [held_id, channel, sender, conversation_id, time]
+                      properties:
+                        held_id: {type: string}
+                        channel: {$ref: "#/components/schemas/ChannelName"}
+                        sender: {type: string}
+                        conversation_id: {type: string}
+                        time: {type: string, format: date-time}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/held/{held_id}/approve:
+    post:
+      operationId: approveHeld
+      summary: Allow the sender and release everything held from them (as message.received)
+      x-scope: admin
+      parameters: [{$ref: "#/components/parameters/HeldId"}]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [released]
+                properties:
+                  released: {type: integer, minimum: 1}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/held/{held_id}/discard:
+    post:
+      operationId: discardHeld
+      x-scope: admin
+      parameters: [{$ref: "#/components/parameters/HeldId"}]
+      responses:
+        "200": {$ref: "#/components/responses/Ok"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/optouts:
+    get:
+      operationId: listOptOuts
+      x-scope: admin
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [optouts]
+                properties:
+                  optouts:
+                    type: array
+                    items:
+                      type: object
+                      required: [channel, address, created]
+                      properties:
+                        channel: {$ref: "#/components/schemas/ChannelName"}
+                        address: {type: string}
+                        created: {type: number, description: unix time}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/optouts/{channel}/{address}:
+    delete:
+      operationId: removeOptOut
+      x-scope: admin
+      parameters:
+        - {name: channel, in: path, required: true, schema: {$ref: "#/components/schemas/ChannelName"}}
+        - {name: address, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {$ref: "#/components/responses/Ok"}
+        default: {$ref: "#/components/responses/Error"}
+
+components:
+  securitySchemes:
+    bearer: {type: http, scheme: bearer}
+
+  parameters:
+    MessageId: {name: message_id, in: path, required: true, schema: {type: string, pattern: "^msg_"}}
+    CallId: {name: call_id, in: path, required: true, schema: {type: string, pattern: "^call_"}}
+    HeldId: {name: held_id, in: path, required: true, schema: {type: string, pattern: "^held_"}}
+    After:
+      name: after
+      in: query
+      description: "event id to continue after (evt_N), or `now`"
+      schema: {type: string, pattern: "^(evt_[0-9]+|now)$"}
+    Types:
+      name: types
+      in: query
+      description: "comma-separated type patterns without prefix/version, e.g. `message.*,call.ended`"
+      schema: {type: string}
+
+  responses:
+    Error:
+      description: error
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Ok:
+      description: ok
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [ok]
+            properties:
+              ok: {type: boolean}
+    OperationQueued:
+      description: queued; outcome as operation.done / operation.failed
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [op_id, message_id, status]
+            properties:
+              op_id: {type: string, pattern: "^op_"}
+              message_id: {type: string}
+              status: {const: queued}
+              duplicate: {type: boolean}
+    Call:
+      description: the call
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/CallView"}
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: |
+                bad_request, bad_json, unauthorized, forbidden, unknown_channel, unknown_person,
+                unknown_conversation, unknown_message, unknown_call, unknown_held, unknown_route,
+                unknown_attachment, bad_target, bad_reply_to, bad_digits, bad_emoji, empty,
+                no_route, no_voice, opted_out, unsupported, not_ours, not_sent_yet, bad_state,
+                agent_not_connected, call_ended, emergency_number_blocked
+            message: {type: string}
+
+    ChannelName: {type: string, enum: [signal, slack, phone]}
+
+    Health:
+      type: object
+      required: [ok, channels]
+      properties:
+        ok: {type: boolean}
+        channels: {type: object, additionalProperties: {type: boolean}}
+
+    Channel:
+      type: object
+      required: [channel, account, messaging, calls, up]
+      properties:
+        channel: {$ref: "#/components/schemas/ChannelName"}
+        account: {type: string}
+        messaging:
+          description: messaging capabilities, null for voice-only channels
+          type: [object, "null"]
+          properties:
+            text: {type: boolean}
+            attachments: {type: boolean}
+            reactions: {type: boolean}
+            edit: {type: boolean}
+            delete: {type: boolean}
+            typing: {type: boolean}
+            threads: {type: boolean}
+            receipts: {type: array, items: {type: string, enum: [delivered, read]}}
+            max_attachment_mb: {type: number}
+        calls:
+          description: call capabilities, null for messaging-only channels
+          type: [object, "null"]
+          properties:
+            inbound: {type: boolean}
+            outbound: {type: boolean}
+            dtmf: {type: boolean}
+            transfer: {type: array, items: {type: string, enum: [blind, warm]}}
+            audio: {type: string}
+        up: {type: boolean}
+
+    Identity:
+      type: object
+      required: [person_id, addresses]
+      properties:
+        person_id: {type: string}
+        addresses:
+          type: object
+          required: [signal, slack, phone]
+          properties:
+            signal: {type: array, items: {type: string}}
+            slack: {type: array, items: {type: string}}
+            phone: {type: array, items: {type: string}}
+
+    Part:
+      oneOf:
+        - {$ref: "#/components/schemas/TextPart"}
+        - {$ref: "#/components/schemas/FilePart"}
+        - {$ref: "#/components/schemas/StickerPart"}
+    TextPart:
+      type: object
+      required: [type, text]
+      properties:
+        type: {const: text}
+        text: {type: string}
+    FilePart:
+      type: object
+      required: [type, attachment_id]
+      properties:
+        type: {const: file}
+        attachment_id: {type: [string, "null"], description: "null when the platform file could not be fetched (then missing: true)"}
+        content_type: {type: [string, "null"]}
+        filename: {type: [string, "null"]}
+        size: {type: [integer, "null"]}
+        sha256: {type: string}
+        caption: {type: string}
+        missing: {type: boolean}
+    StickerPart:
+      type: object
+      required: [type]
+      properties:
+        type: {const: sticker}
+        pack_id: {type: [string, "null"]}
+        sticker_id: {type: [integer, string, "null"]}
+
+    Target:
+      description: where a message goes
+      anyOf:
+        - type: object
+          required: [conversation_id]
+          properties:
+            conversation_id: {type: string, pattern: "^conv_"}
+        - type: object
+          required: [person_id]
+          properties:
+            person_id: {type: string}
+            channel: {$ref: "#/components/schemas/ChannelName"}
+        - type: object
+          required: [channel, address]
+          properties:
+            channel: {$ref: "#/components/schemas/ChannelName"}
+            address: {type: string, description: "Signal ACI or E.164, Slack user id"}
+
+    SendMessageRequest:
+      type: object
+      required: [to, parts]
+      properties:
+        to: {$ref: "#/components/schemas/Target"}
+        parts: {type: array, minItems: 1, items: {$ref: "#/components/schemas/Part"}}
+        reply_to: {type: string, description: "message_id in the same conversation"}
+        idempotency_key: {type: string}
+
+    MessageQueued:
+      type: object
+      required: [message_id, conversation_id, channel, status]
+      properties:
+        message_id: {type: string, pattern: "^msg_"}
+        conversation_id: {type: string, pattern: "^conv_"}
+        channel: {$ref: "#/components/schemas/ChannelName"}
+        status: {const: queued}
+        duplicate: {type: boolean}
+
+    MessageView:
+      type: object
+      required: [id, conversation_id, direction, status, error]
+      properties:
+        id: {type: string}
+        conversation_id: {type: string}
+        direction: {type: string, enum: [in, out]}
+        status: {type: string, enum: [received, queued, sent, delivered, read, failed]}
+        error: {type: [string, "null"]}
+
+    StartCallRequest:
+      type: object
+      required: [to]
+      properties:
+        to:
+          oneOf:
+            - {type: string, description: "E.164 for phone; Signal ACI or E.164 for signal"}
+            - type: object
+              required: [person_id]
+              properties:
+                person_id: {type: string}
+        via: {type: string, enum: [phone, signal], description: "default: first voice channel the person has"}
+        route: {type: string, description: "gateway route (agent media URL); default: the adapter's route"}
+        idempotency_key: {type: string}
+
+    CallStarted:
+      type: object
+      required: [call_id, state, channel]
+      properties:
+        call_id: {type: string, pattern: "^call_"}
+        state: {const: initiated}
+        channel: {$ref: "#/components/schemas/ChannelName"}
+        duplicate: {type: boolean}
+
+    CallView:
+      type: object
+      required: [call_id, state]
+      properties:
+        call_id: {type: string, pattern: "^call_"}
+        channel: {$ref: "#/components/schemas/ChannelName"}
+        direction: {type: string, enum: [inbound, outbound]}
+        state: {type: string, enum: [initiated, ringing, answered, ended]}
+        peer: {type: [string, "null"]}
+        local: {type: [string, "null"]}
+        person_id: {type: [string, "null"]}
+        route: {type: [string, "null"]}
+        reason: {type: [string, "null"]}
+        answered: {type: boolean}

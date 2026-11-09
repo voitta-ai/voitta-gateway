@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1078" viewBox="0 0 1240 1078">
+  <title>voitta-ask flow</title>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <polyline points="110.0,94 110.0,1054" fill="none" stroke="#a1a1aa" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <polyline points="365.0,94 365.0,1054" fill="none" stroke="#a1a1aa" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <polyline points="620.0,94 620.0,1054" fill="none" stroke="#a1a1aa" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <polyline points="875.0,94 875.0,1054" fill="none" stroke="#a1a1aa" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <polyline points="1130.0,94 1130.0,1054" fill="none" stroke="#a1a1aa" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <rect x="1182.4" y="6" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="1201.2" y="18" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="1148" y="18" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="end" fill="#52525b" font-style="italic">real Signal calls on .212; times from the call to Nadya</text>
+  <polyline points="110.0,124 365.0,124" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="365.0,124 356.8,127.7 356.8,120.3" fill="#3f3f46"/>
+  <rect x="50.0" y="106.5" width="375.1" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="237.5" y="117" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">POST /v1/asks {to, text}  -&gt; 202 {ask_id, state: calling}</text>
+  <rect x="166.07359999999994" y="144" width="397.8528000000001" height="30" rx="6" fill="#f3ecfe" stroke="#6d28d9" stroke-width="1"/>
+  <text x="365.0" y="163" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="bold" text-anchor="middle" fill="#6d28d9">synthesize the text before dialing (Piper, ~0.15 s)</text>
+  <polyline points="365.0,206 620.0,206" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="620.0,206 611.8,209.7 611.8,202.3" fill="#3f3f46"/>
+  <rect x="346.8" y="188.5" width="291.4" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="492.5" y="199" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">POST /v1/calls {to, via: signal, route: ask}</text>
+  <polyline points="620.0,244 365.0,244" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="365.0,244 373.2,240.3 373.2,247.7" fill="#047857"/>
+  <rect x="388.7" y="226.5" width="207.6" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="492.5" y="237" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">WS connect (signed) · connected</text>
+  <polyline points="620.0,282 875.0,282" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="875.0,282 866.8,285.7 866.8,278.3" fill="#3f3f46"/>
+  <rect x="714.5" y="264.5" width="66.0" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="747.5" y="275" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">startCall</text>
+  <polyline points="875.0,320 1130.0,320" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="1130.0,320 1121.8,323.7 1121.8,316.3" fill="#3f3f46"/>
+  <rect x="943.8" y="302.5" width="117.5" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="1002.5" y="313" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">ring  (t = 0.5 s)</text>
+  <polyline points="620.0,358 365.0,358" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="6 4"/>
+  <polygon points="365.0,358 373.2,354.3 373.2,361.7" fill="#3f3f46"/>
+  <rect x="269.5" y="340.5" width="445.9" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="492.5" y="351" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">event call.ringing (long-poll; a watchdog also checks GET /v1/calls)</text>
+  <polyline points="1130.0,396 875.0,396" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="875.0,396 883.2,392.3 883.2,399.7" fill="#3f3f46"/>
+  <rect x="930.9" y="378.5" width="143.2" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="1002.5" y="389" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">picks up  (t = 8.5 s)</text>
+  <polyline points="875.0,434 620.0,434" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="620.0,434 628.2,430.3 628.2,437.7" fill="#3f3f46"/>
+  <rect x="611.5" y="416.5" width="272.0" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="747.5" y="427" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">callEvent CONNECTED -&gt; open Pulse devices</text>
+  <polyline points="620.0,472 365.0,472" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="365.0,472 373.2,468.3 373.2,475.7" fill="#3f3f46"/>
+  <rect x="391.9" y="454.5" width="201.2" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="492.5" y="465" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">start {pcm16le, 16 kHz, 20 ms}</text>
+  <polyline points="365.0,510 620.0,510" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="620.0,510 611.8,513.7 611.8,506.3" fill="#047857"/>
+  <rect x="356.5" y="492.5" width="272.0" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="492.5" y="503" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">media: spoken text + beep · mark &quot;prompt&quot;</text>
+  <polyline points="620.0,548 1130.0,548" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="1130.0,548 1121.8,551.7 1121.8,544.3" fill="#047857"/>
+  <rect x="735.8" y="530.5" width="278.5" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="875.0" y="541" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">audio  (16 -&gt; 48 kHz, played in real time)</text>
+  <polyline points="620.0,586 365.0,586" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="365.0,586 373.2,582.3 373.2,589.7" fill="#3f3f46"/>
+  <rect x="337.2" y="568.5" width="310.7" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="492.5" y="579" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">mark &quot;prompt&quot; played -&gt; listening  (t = 19.3 s)</text>
+  <polyline points="1130.0,624 620.0,624" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="620.0,624 628.2,620.3 628.2,627.7" fill="#047857"/>
+  <rect x="851.7" y="606.5" width="46.6" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="875.0" y="617" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">answer</text>
+  <polyline points="620.0,662 365.0,662" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="365.0,662 373.2,658.3 373.2,665.7" fill="#047857"/>
+  <rect x="375.8" y="644.5" width="233.4" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="492.5" y="655" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">media frames  (48 -&gt; 16 kHz, 20 ms)</text>
+  <rect x="191.31839999999997" y="682" width="347.36320000000006" height="30" rx="6" fill="#f3ecfe" stroke="#6d28d9" stroke-width="1"/>
+  <text x="365.0" y="701" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="bold" text-anchor="middle" fill="#6d28d9">1.5 s of silence after speech -&gt; answer over</text>
+  <polyline points="365.0,744 620.0,744" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="620.0,744 611.8,747.7 611.8,740.3" fill="#047857"/>
+  <rect x="359.7" y="726.5" width="265.6" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="492.5" y="737" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">media &quot;Thank you. Goodbye.&quot; · mark &quot;bye&quot;</text>
+  <rect x="140.82879999999994" y="764" width="448.3424000000001" height="30" rx="6" fill="#f3ecfe" stroke="#6d28d9" stroke-width="1"/>
+  <text x="365.0" y="783" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="bold" text-anchor="middle" fill="#6d28d9">transcribe meanwhile: Whisper small on the RTX 3090, 0.3 s</text>
+  <polyline points="620.0,826 365.0,826" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="365.0,826 373.2,822.3 373.2,829.7" fill="#3f3f46"/>
+  <rect x="433.8" y="808.5" width="117.5" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="492.5" y="819" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">mark &quot;bye&quot; played</text>
+  <polyline points="365.0,864 620.0,864" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="620.0,864 611.8,867.7 611.8,860.3" fill="#3f3f46"/>
+  <rect x="469.2" y="846.5" width="46.6" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="492.5" y="857" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">hangup</text>
+  <polyline points="620.0,902 875.0,902" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="875.0,902 866.8,905.7 866.8,898.3" fill="#3f3f46"/>
+  <rect x="711.3" y="884.5" width="72.4" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="747.5" y="895" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">hangupCall</text>
+  <polyline points="620.0,940 365.0,940" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="6 4"/>
+  <polygon points="365.0,940 373.2,936.3 373.2,943.7" fill="#3f3f46"/>
+  <rect x="414.4" y="922.5" width="156.1" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="492.5" y="933" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">stop · event call.ended</text>
+  <polyline points="110.0,978 365.0,978" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="365.0,978 356.8,981.7 356.8,974.3" fill="#3f3f46"/>
+  <rect x="153.0" y="960.5" width="169.0" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="237.5" y="971" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">GET /v1/asks/{id}?wait=60</text>
+  <polyline points="365.0,1016 110.0,1016" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="110.0,1016 118.2,1012.3 118.2,1019.7" fill="#3f3f46"/>
+  <rect x="133.7" y="998.5" width="207.6" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="237.5" y="1009" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">done · transcript  (t = 27.5 s)</text>
+  <rect x="12.0" y="40" width="196" height="54" rx="8" fill="#f3ecfe" stroke="#6d28d9" stroke-width="1.5"/>
+  <text x="110.0" y="64.0" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#6d28d9">Client</text>
+  <text x="110.0" y="80.0" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">any service · examples/ask.py</text>
+  <rect x="267.0" y="40" width="196" height="54" rx="8" fill="#f3ecfe" stroke="#6d28d9" stroke-width="1.5"/>
+  <text x="365.0" y="64.0" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#6d28d9">voitta-ask</text>
+  <text x="365.0" y="80.0" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">Piper · Whisper (GPU)</text>
+  <rect x="522.0" y="40" width="196" height="54" rx="8" fill="#fdf2f8" stroke="#be185d" stroke-width="1.5"/>
+  <text x="620.0" y="71.5" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#be185d">voitta-gateway</text>
+  <rect x="777.0" y="40" width="196" height="54" rx="8" fill="#e7f6ee" stroke="#047857" stroke-width="1.5"/>
+  <text x="875.0" y="64.0" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#047857">signal-cli + tunnel</text>
+  <text x="875.0" y="80.0" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">RingRTC · Pulse 48 kHz</text>
+  <rect x="1032.0" y="40" width="196" height="54" rx="8" fill="#ffffff" stroke="#27272a" stroke-width="1.5"/>
+  <text x="1130.0" y="64.0" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#18181b">Callee</text>
+  <text x="1130.0" y="80.0" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">Signal app</text>
+</svg>

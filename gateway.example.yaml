@@ -1,0 +1,64 @@
+# voitta-gateway config. Secrets are never in here: every *_secret names an
+# environment variable (or a line in env_file).
+listen:
+  api: 0.0.0.0:8700             # private: bind to localhost / the private network only
+  ingress: 0.0.0.0:8800         # public via Caddy: Telnyx webhooks + media (phone adapter only)
+data_dir: /data
+env_file: .env
+
+adapters:
+  signal:
+    account: "+15550001111"     # a spare number, never a personal one
+    data_dir: /signal           # signal-cli --config (holds the account keys)
+    tcp: 127.0.0.1:7583
+    groups: mention             # mention | all | ignore
+    calls: true                 # needs signal-call-tunnel + PulseAudio (Linux)
+    route: main
+
+  slack:
+    bot_token_secret: SLACK_BOT_TOKEN
+    app_token_secret: SLACK_APP_TOKEN   # Socket Mode
+    channels: mention
+
+  # phone:
+  #   provider: telnyx
+  #   api_key_secret: TELNYX_API_KEY
+  #   public_key_secret: TELNYX_PUBLIC_KEY   # Portal -> Keys & Credentials -> Public Key
+  #   connection_id: "1234567890"            # Call Control app (needed to dial out)
+  #   numbers: ["+15550002222"]
+  #   public_base_url: https://gw.example.com
+  #   codec: L16                             # 16 kHz both ways; PCMU = 8 kHz
+  #   route: main
+
+routes:
+  main:
+    media_url: ws://127.0.0.1:8765/media     # the voice agent (examples/echo_agent.py, pipecat_bot.py)
+    media_secret_secret: VOITTA_MEDIA_SECRET
+    answer: auto
+    connect_timeout_s: 3
+    grace_s: 5
+    fallback: reject                         # reject | hangup | transfer:+15551234567
+
+consumers:
+  agent-core:
+    token_secret: TOKEN_AGENT_CORE
+    scopes: [events:read, messages:send]
+    events: ["message.*", "reaction.*", "contact.*"]
+  voice-agent:
+    token_secret: TOKEN_VOICE_AGENT
+    scopes: [events:read, calls:control]
+    events: ["call.*"]
+  ops:
+    token_secret: TOKEN_OPS
+    scopes: [admin]
+
+persons:
+  p_roman:
+    signal: ["+15551112222"]                 # ACI (UUID) and/or number
+    slack: ["T0123/U0456"]
+    phone: ["+15551112222"]
+
+policy:
+  inbound_allowlist: [p_roman]               # "*" lets everyone through; others are held
+  calls_allow_unknown: false
+  block_emergency_numbers: true

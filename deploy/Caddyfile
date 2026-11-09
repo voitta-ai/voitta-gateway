@@ -1,0 +1,10 @@
+# Public ingress: only the Telnyx paths reach the gateway's ingress listener.
+gw.example.com {
+	@telnyx path /telnyx/*
+	handle @telnyx {
+		reverse_proxy gateway:8800
+	}
+	handle {
+		respond 404
+	}
+}

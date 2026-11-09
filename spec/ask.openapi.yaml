@@ -1,0 +1,142 @@
+openapi: 3.1.0
+info:
+  title: voitta-ask API
+  version: 1.0.0
+  description: |
+    Call someone, read them a text, get back what they answered, as text.
+
+    voitta-ask is a voice agent behind voitta-gateway: it places the call through the gateway
+    API and serves the agent side of voitta-media/1 (see voitta.asyncapi.yaml). Asks are kept in
+    memory for `keep_s` (default 1 h) after they finish; a restart forgets them.
+
+    Lifecycle (`state`):
+
+        calling -> ringing -> speaking -> listening -> transcribing -> done
+                        \-> no_answer      (ended before pickup, or ring_timeout_s passed)
+        any -> failed                      (gateway refused, engine error, gateway lost the call)
+
+    The answer ends at `end_silence_s` of silence after speech, `max_answer_s`, a hang-up, or
+    `no_speech_s` without speech.
+servers:
+  - url: http://127.0.0.1:8791
+security:
+  - bearer: []
+
+paths:
+  /v1/health:
+    get:
+      operationId: health
+      security: []
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, asks]
+                properties:
+                  ok: {type: boolean}
+                  asks: {type: integer, minimum: 0}
+
+  /v1/asks:
+    post:
+      operationId: createAsk
+      summary: Synthesize the text, place the call, return at once
+      description: |
+        The text is synthesized before dialing, so the callee hears it right after pickup.
+        Repeating a request with the same `idempotency_key` returns the existing ask.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AskRequest"}
+      responses:
+        "202":
+          description: calling
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Ask"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/asks/{ask_id}:
+    get:
+      operationId: getAsk
+      summary: The ask; with `wait`, returns early when it reaches a final state
+      parameters:
+        - {name: ask_id, in: path, required: true, schema: {type: string, pattern: "^ask_"}}
+        - {name: wait, in: query, description: "seconds to wait for a state change toward done (max 120)",
+           schema: {type: number, minimum: 0, maximum: 120, default: 0}}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Ask"}
+        default: {$ref: "#/components/responses/Error"}
+
+components:
+  securitySchemes:
+    bearer: {type: http, scheme: bearer}
+
+  responses:
+    Error:
+      description: error
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: object
+                required: [code, message]
+                properties:
+                  code:
+                    type: string
+                    description: |
+                      bad_request, bad_json, unauthorized, text_too_long, unknown_ask, and any
+                      gateway error code when the gateway refused the call (e.g. unknown_channel,
+                      opted_out, emergency_number_blocked)
+                  message: {type: string}
+
+  schemas:
+    AskRequest:
+      type: object
+      required: [to, text]
+      properties:
+        to:
+          oneOf:
+            - {type: string, description: "Signal ACI or E.164"}
+            - type: object
+              required: [person_id]
+              properties:
+                person_id: {type: string}
+        text: {type: string, minLength: 1, maxLength: 800}
+        via: {type: string, enum: [signal, phone], default: signal}
+        language: {type: [string, "null"], default: en, description: "ISO 639-1 for transcription; null = detect"}
+        idempotency_key: {type: string}
+
+    Ask:
+      type: object
+      required: [ask_id, state, to, via, call_id, text, transcript, language, answer_s, end_reason, error, times]
+      properties:
+        ask_id: {type: string, pattern: "^ask_"}
+        state: {type: string, enum: [calling, ringing, speaking, listening, transcribing, done, no_answer, failed]}
+        to: {type: string}
+        via: {type: string, enum: [signal, phone]}
+        call_id: {type: [string, "null"]}
+        text: {type: string}
+        transcript: {type: [string, "null"], description: "set when done; empty string if nothing was said"}
+        language: {type: [string, "null"]}
+        answer_s: {type: number, minimum: 0, description: "seconds of answer audio recorded"}
+        end_reason:
+          type: [string, "null"]
+          description: |
+            end_of_speech, no_speech, max_duration, hung_up, ring_timeout, or the gateway's
+            call.ended reason (e.g. timeout, declined)
+        error: {type: [string, "null"]}
+        times:
+          type: object
+          description: "seconds from creation to entering each state"
+          additionalProperties: {type: number}

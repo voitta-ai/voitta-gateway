@@ -1,0 +1,689 @@
+asyncapi: 3.1.0
+info:
+  title: voitta-gateway streams
+  version: 1.0.0
+  description: |
+    The two streaming interfaces of voitta-gateway, described from the gateway's side.
+
+    **Events** (`events` channel): every platform occurrence and command outcome, as CloudEvents
+    1.0 (JSON). Persisted before delivery, delivered at least once, replayable by id.
+    `time` is when it happened on the platform, `ingesttime` when the gateway got it, `seq`
+    counts events per conversation (gaps mean missed events). Read them as server-sent events
+    from `GET /v1/events` or by long-polling `GET /v1/events/poll` (gateway.openapi.yaml).
+    Consumers must tolerate duplicates (dedupe on `id`) and unknown types.
+
+    **Media** (`media` channel), protocol `voitta-media/1`: one WebSocket per call between the
+    gateway (client) and the agent the call is routed to (server). The gateway connects while
+    the call still rings, so a dead agent is found before the caller hears anything. Audio is
+    base64 pcm16le in JSON text frames; the format is announced in `start`. The gateway plays
+    agent audio out in real time and owns the playout queue: a `mark` comes back when the audio
+    before it was played (`cleared: false`) or dropped by `clear` (`cleared: true`).
+servers:
+  gatewayApi:
+    host: 127.0.0.1:8700
+    protocol: http
+    description: private API listener of the gateway (events are read here)
+    security:
+      - $ref: "#/components/securitySchemes/bearer"
+  agent:
+    host: "{agentHost}"
+    protocol: ws
+    description: |
+      a voice agent; the gateway connects to the route's `media_url` (ws:// or wss://).
+      The agent must check `sig` (HMAC-SHA256 of `"{call_id}.{ts}"` with the route's media
+      secret, hex) and refuse stale `ts` (voitta_gateway.agent.verify does both).
+    variables:
+      agentHost:
+        description: host:port of the route's media_url
+        default: 127.0.0.1:8765
+
+channels:
+  events:
+    address: /v1/events
+    servers: [{$ref: "#/servers/gatewayApi"}]
+    description: server-sent events; `id:` = event id, `event:` = event type, `data:` = the event
+    messages:
+      messageReceived: {$ref: "#/components/messages/messageReceived"}
+      messageHeld: {$ref: "#/components/messages/messageHeld"}
+      messageStatus: {$ref: "#/components/messages/messageStatus"}
+      messageEdited: {$ref: "#/components/messages/messageEdited"}
+      messageDeleted: {$ref: "#/components/messages/messageDeleted"}
+      reactionAdded: {$ref: "#/components/messages/reactionAdded"}
+      reactionRemoved: {$ref: "#/components/messages/reactionRemoved"}
+      contactOptedOut: {$ref: "#/components/messages/contactOptedOut"}
+      contactOptedIn: {$ref: "#/components/messages/contactOptedIn"}
+      operationDone: {$ref: "#/components/messages/operationDone"}
+      operationFailed: {$ref: "#/components/messages/operationFailed"}
+      callRinging: {$ref: "#/components/messages/callRinging"}
+      callAnswered: {$ref: "#/components/messages/callAnswered"}
+      callDtmf: {$ref: "#/components/messages/callDtmf"}
+      callState: {$ref: "#/components/messages/callState"}
+      callTransferred: {$ref: "#/components/messages/callTransferred"}
+      callEnded: {$ref: "#/components/messages/callEnded"}
+      channelUp: {$ref: "#/components/messages/channelUp"}
+      channelDown: {$ref: "#/components/messages/channelDown"}
+
+  media:
+    address: null
+    servers: [{$ref: "#/servers/agent"}]
+    description: the route's media_url, opened by the gateway with the query below
+    bindings:
+      ws:
+        method: GET
+        query:
+          type: object
+          required: [call_id, ts, sig]
+          properties:
+            call_id: {type: string, pattern: "^call_"}
+            ts: {type: string, description: unix seconds}
+            sig: {type: string, description: "hex HMAC-SHA256 of {call_id}.{ts}"}
+    messages:
+      connected: {$ref: "#/components/messages/mediaConnected"}
+      start: {$ref: "#/components/messages/mediaStart"}
+      mediaToAgent: {$ref: "#/components/messages/mediaToAgent"}
+      markDone: {$ref: "#/components/messages/mediaMarkDone"}
+      dtmf: {$ref: "#/components/messages/mediaDtmf"}
+      error: {$ref: "#/components/messages/mediaError"}
+      stop: {$ref: "#/components/messages/mediaStop"}
+      mediaFromAgent: {$ref: "#/components/messages/mediaFromAgent"}
+      mark: {$ref: "#/components/messages/mediaMark"}
+      clear: {$ref: "#/components/messages/mediaClear"}
+      hangup: {$ref: "#/components/messages/mediaHangup"}
+
+operations:
+  publishEvents:
+    action: send
+    channel: {$ref: "#/channels/events"}
+    summary: the gateway emits events (consumers read them)
+    messages:
+      - {$ref: "#/channels/events/messages/messageReceived"}
+      - {$ref: "#/channels/events/messages/messageHeld"}
+      - {$ref: "#/channels/events/messages/messageStatus"}
+      - {$ref: "#/channels/events/messages/messageEdited"}
+      - {$ref: "#/channels/events/messages/messageDeleted"}
+      - {$ref: "#/channels/events/messages/reactionAdded"}
+      - {$ref: "#/channels/events/messages/reactionRemoved"}
+      - {$ref: "#/channels/events/messages/contactOptedOut"}
+      - {$ref: "#/channels/events/messages/contactOptedIn"}
+      - {$ref: "#/channels/events/messages/operationDone"}
+      - {$ref: "#/channels/events/messages/operationFailed"}
+      - {$ref: "#/channels/events/messages/callRinging"}
+      - {$ref: "#/channels/events/messages/callAnswered"}
+      - {$ref: "#/channels/events/messages/callDtmf"}
+      - {$ref: "#/channels/events/messages/callState"}
+      - {$ref: "#/channels/events/messages/callTransferred"}
+      - {$ref: "#/channels/events/messages/callEnded"}
+      - {$ref: "#/channels/events/messages/channelUp"}
+      - {$ref: "#/channels/events/messages/channelDown"}
+  sendMedia:
+    action: send
+    channel: {$ref: "#/channels/media"}
+    summary: gateway -> agent
+    messages:
+      - {$ref: "#/channels/media/messages/connected"}
+      - {$ref: "#/channels/media/messages/start"}
+      - {$ref: "#/channels/media/messages/mediaToAgent"}
+      - {$ref: "#/channels/media/messages/markDone"}
+      - {$ref: "#/channels/media/messages/dtmf"}
+      - {$ref: "#/channels/media/messages/error"}
+      - {$ref: "#/channels/media/messages/stop"}
+  receiveMedia:
+    action: receive
+    channel: {$ref: "#/channels/media"}
+    summary: agent -> gateway
+    messages:
+      - {$ref: "#/channels/media/messages/mediaFromAgent"}
+      - {$ref: "#/channels/media/messages/mark"}
+      - {$ref: "#/channels/media/messages/clear"}
+      - {$ref: "#/channels/media/messages/hangup"}
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+
+  messages:
+    messageReceived: {name: ai.voitta.message.received.v1, summary: "a message for the agent (passed policy)", payload: {$ref: "#/components/schemas/MessageReceivedEvent"}}
+    messageHeld: {name: ai.voitta.message.held.v1, summary: "a message from an unknown sender, held without content", payload: {$ref: "#/components/schemas/MessageHeldEvent"}}
+    messageStatus: {name: ai.voitta.message.status.v1, summary: "outbound message status; only moves forward", payload: {$ref: "#/components/schemas/MessageStatusEvent"}}
+    messageEdited: {name: ai.voitta.message.edited.v1, payload: {$ref: "#/components/schemas/MessageEditedEvent"}}
+    messageDeleted: {name: ai.voitta.message.deleted.v1, payload: {$ref: "#/components/schemas/MessageDeletedEvent"}}
+    reactionAdded: {name: ai.voitta.reaction.added.v1, payload: {$ref: "#/components/schemas/ReactionAddedEvent"}}
+    reactionRemoved: {name: ai.voitta.reaction.removed.v1, payload: {$ref: "#/components/schemas/ReactionRemovedEvent"}}
+    contactOptedOut: {name: ai.voitta.contact.opted_out.v1, summary: "sender sent STOP (1:1 only)", payload: {$ref: "#/components/schemas/ContactOptedOutEvent"}}
+    contactOptedIn: {name: ai.voitta.contact.opted_in.v1, summary: "sender sent START after STOP", payload: {$ref: "#/components/schemas/ContactOptedInEvent"}}
+    operationDone: {name: ai.voitta.operation.done.v1, summary: "edit / delete / react went through", payload: {$ref: "#/components/schemas/OperationDoneEvent"}}
+    operationFailed: {name: ai.voitta.operation.failed.v1, payload: {$ref: "#/components/schemas/OperationFailedEvent"}}
+    callRinging: {name: ai.voitta.call.ringing.v1, payload: {$ref: "#/components/schemas/CallRingingEvent"}}
+    callAnswered: {name: ai.voitta.call.answered.v1, payload: {$ref: "#/components/schemas/CallAnsweredEvent"}}
+    callDtmf: {name: ai.voitta.call.dtmf.v1, payload: {$ref: "#/components/schemas/CallDtmfEvent"}}
+    callState: {name: ai.voitta.call.state.v1, summary: "transient platform state, e.g. Signal reconnecting", payload: {$ref: "#/components/schemas/CallStateEvent"}}
+    callTransferred: {name: ai.voitta.call.transferred.v1, payload: {$ref: "#/components/schemas/CallTransferredEvent"}}
+    callEnded: {name: ai.voitta.call.ended.v1, payload: {$ref: "#/components/schemas/CallEndedEvent"}}
+    channelUp: {name: ai.voitta.channel.up.v1, payload: {$ref: "#/components/schemas/ChannelUpEvent"}}
+    channelDown: {name: ai.voitta.channel.down.v1, payload: {$ref: "#/components/schemas/ChannelDownEvent"}}
+
+    mediaConnected: {name: connected, summary: "first message; resumed=true after a reconnect", payload: {$ref: "#/components/schemas/MediaConnected"}}
+    mediaStart: {name: start, summary: "the call is answered: audio flows, the agent may speak", payload: {$ref: "#/components/schemas/MediaStart"}}
+    mediaToAgent: {name: media, summary: "caller audio, one frame", payload: {$ref: "#/components/schemas/MediaToAgent"}}
+    mediaMarkDone: {name: mark, summary: "audio before the mark was played or cleared", payload: {$ref: "#/components/schemas/MediaMarkDone"}}
+    mediaDtmf: {name: dtmf, payload: {$ref: "#/components/schemas/MediaDtmf"}}
+    mediaError: {name: error, payload: {$ref: "#/components/schemas/MediaError"}}
+    mediaStop: {name: stop, summary: "the call is over; the gateway closes the socket", payload: {$ref: "#/components/schemas/MediaStop"}}
+    mediaFromAgent: {name: media, summary: "agent audio, any length; queued and played in real time", payload: {$ref: "#/components/schemas/MediaFromAgent"}}
+    mediaMark: {name: mark, summary: "a marker in the playout queue", payload: {$ref: "#/components/schemas/MediaMark"}}
+    mediaClear: {name: clear, summary: "drop queued audio (barge-in); pending marks return cleared", payload: {$ref: "#/components/schemas/MediaClear"}}
+    mediaHangup: {name: hangup, summary: "end the call", payload: {$ref: "#/components/schemas/MediaHangup"}}
+
+  schemas:
+    # ------------------------------------------------------------ events: envelope
+    Event:
+      description: any event (for validation)
+      oneOf:
+        - {$ref: "#/components/schemas/MessageReceivedEvent"}
+        - {$ref: "#/components/schemas/MessageHeldEvent"}
+        - {$ref: "#/components/schemas/MessageStatusEvent"}
+        - {$ref: "#/components/schemas/MessageEditedEvent"}
+        - {$ref: "#/components/schemas/MessageDeletedEvent"}
+        - {$ref: "#/components/schemas/ReactionAddedEvent"}
+        - {$ref: "#/components/schemas/ReactionRemovedEvent"}
+        - {$ref: "#/components/schemas/ContactOptedOutEvent"}
+        - {$ref: "#/components/schemas/ContactOptedInEvent"}
+        - {$ref: "#/components/schemas/OperationDoneEvent"}
+        - {$ref: "#/components/schemas/OperationFailedEvent"}
+        - {$ref: "#/components/schemas/CallRingingEvent"}
+        - {$ref: "#/components/schemas/CallAnsweredEvent"}
+        - {$ref: "#/components/schemas/CallDtmfEvent"}
+        - {$ref: "#/components/schemas/CallStateEvent"}
+        - {$ref: "#/components/schemas/CallTransferredEvent"}
+        - {$ref: "#/components/schemas/CallEndedEvent"}
+        - {$ref: "#/components/schemas/ChannelUpEvent"}
+        - {$ref: "#/components/schemas/ChannelDownEvent"}
+
+    Envelope:
+      type: object
+      required: [specversion, id, source, type, datacontenttype, time, ingesttime, data]
+      properties:
+        specversion: {const: "1.0"}
+        id: {type: string, pattern: "^evt_[0-9]+$"}
+        source: {type: string, pattern: "^/gateway/[a-z]+$"}
+        type: {type: string, pattern: "^ai\\.voitta\\.[a-z_]+\\.[a-z_]+\\.v[0-9]+$"}
+        datacontenttype: {const: application/json}
+        time: {type: string, format: date-time, description: "when it happened on the platform"}
+        ingesttime: {type: string, format: date-time, description: "when the gateway got it"}
+        subject: {type: string, description: "conversation_id or call_id"}
+        seq: {type: integer, minimum: 1, description: "per-conversation counter"}
+        traceparent: {type: string}
+        data: {type: object}
+
+    ConversationEvent:
+      description: envelope of an event that belongs to a conversation
+      allOf:
+        - {$ref: "#/components/schemas/Envelope"}
+        - type: object
+          required: [subject, seq]
+          properties:
+            subject: {type: string, pattern: "^conv_"}
+
+    CallEvent:
+      description: envelope of an event that belongs to a call
+      allOf:
+        - {$ref: "#/components/schemas/Envelope"}
+        - type: object
+          required: [subject]
+          properties:
+            subject: {type: string, pattern: "^call_"}
+
+    # ------------------------------------------------------------ events: messages
+    MessageReceivedEvent:
+      allOf:
+        - {$ref: "#/components/schemas/ConversationEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.message.received.v1}
+            data:
+              type: object
+              required: [message_id, conversation_id, channel, conversation_kind, sender, person_id, parts, reply_to, thread, addressed]
+              properties:
+                message_id: {type: string, pattern: "^msg_"}
+                conversation_id: {type: string, pattern: "^conv_"}
+                channel: {$ref: "#/components/schemas/ChannelName"}
+                conversation_kind: {type: string, enum: [direct, group]}
+                sender: {$ref: "#/components/schemas/Sender"}
+                person_id: {$ref: "#/components/schemas/PersonId"}
+                parts: {type: array, items: {$ref: "#/components/schemas/Part"}}
+                reply_to: {type: [string, "null"], description: "message_id this one quotes / answers"}
+                thread: {type: [string, "null"], description: "platform thread id (Slack)"}
+                addressed: {type: boolean, description: "DM, or the agent was mentioned"}
+                slack_channel: {type: string}
+
+    MessageHeldEvent:
+      allOf:
+        - {$ref: "#/components/schemas/ConversationEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.message.held.v1}
+            data:
+              type: object
+              required: [held_id, channel, conversation_id, sender]
+              additionalProperties: false
+              properties:
+                held_id: {type: string, pattern: "^held_"}
+                channel: {$ref: "#/components/schemas/ChannelName"}
+                conversation_id: {type: string}
+                sender:
+                  type: object
+                  required: [id]
+                  additionalProperties: false
+                  properties: {id: {type: string}}
+
+    MessageStatusEvent:
+      allOf:
+        - {$ref: "#/components/schemas/ConversationEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.message.status.v1}
+            data:
+              type: object
+              required: [conversation_id, message_id, status]
+              properties:
+                conversation_id: {type: string}
+                message_id: {type: string, pattern: "^msg_"}
+                status: {type: string, enum: [queued, sent, delivered, read, failed]}
+                error: {type: string}
+
+    MessageEditedEvent:
+      allOf:
+        - {$ref: "#/components/schemas/ConversationEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.message.edited.v1}
+            data:
+              type: object
+              required: [conversation_id, message_id, platform_id, person_id, sender, parts]
+              properties:
+                conversation_id: {type: string}
+                message_id: {type: [string, "null"], description: "null if the original was never seen"}
+                platform_id: {type: string}
+                person_id: {$ref: "#/components/schemas/PersonId"}
+                sender: {$ref: "#/components/schemas/Sender"}
+                parts: {type: array, items: {$ref: "#/components/schemas/Part"}}
+
+    MessageDeletedEvent:
+      allOf:
+        - {$ref: "#/components/schemas/ConversationEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.message.deleted.v1}
+            data:
+              type: object
+              required: [conversation_id, message_id, platform_id, person_id, sender]
+              properties:
+                conversation_id: {type: string}
+                message_id: {type: [string, "null"]}
+                platform_id: {type: string}
+                person_id: {$ref: "#/components/schemas/PersonId"}
+                sender: {$ref: "#/components/schemas/Sender"}
+
+    ReactionAddedEvent:
+      allOf:
+        - {$ref: "#/components/schemas/ConversationEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.reaction.added.v1}
+            data: {$ref: "#/components/schemas/ReactionData"}
+
+    ReactionRemovedEvent:
+      allOf:
+        - {$ref: "#/components/schemas/ConversationEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.reaction.removed.v1}
+            data: {$ref: "#/components/schemas/ReactionData"}
+
+    ReactionData:
+      type: object
+      required: [conversation_id, message_id, emoji, person_id, sender]
+      properties:
+        conversation_id: {type: string}
+        message_id: {type: [string, "null"]}
+        emoji: {type: string, description: "Unicode (Signal) or a Slack emoji name"}
+        person_id: {$ref: "#/components/schemas/PersonId"}
+        sender: {$ref: "#/components/schemas/Sender"}
+
+    ContactOptedOutEvent:
+      allOf:
+        - {$ref: "#/components/schemas/ConversationEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.contact.opted_out.v1}
+            data: {$ref: "#/components/schemas/ContactData"}
+
+    ContactOptedInEvent:
+      allOf:
+        - {$ref: "#/components/schemas/ConversationEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.contact.opted_in.v1}
+            data: {$ref: "#/components/schemas/ContactData"}
+
+    ContactData:
+      type: object
+      required: [channel, conversation_id, address, person_id]
+      properties:
+        channel: {$ref: "#/components/schemas/ChannelName"}
+        conversation_id: {type: string}
+        address: {type: string}
+        person_id: {$ref: "#/components/schemas/PersonId"}
+
+    OperationDoneEvent:
+      allOf:
+        - {$ref: "#/components/schemas/ConversationEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.operation.done.v1}
+            data:
+              type: object
+              required: [op_id, op, conversation_id]
+              properties:
+                op_id: {type: string, pattern: "^op_"}
+                op: {type: string, enum: [edit, delete, react]}
+                conversation_id: {type: string}
+
+    OperationFailedEvent:
+      allOf:
+        - {$ref: "#/components/schemas/ConversationEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.operation.failed.v1}
+            data:
+              type: object
+              required: [op_id, op, conversation_id, error]
+              properties:
+                op_id: {type: string, pattern: "^op_"}
+                op: {type: string, enum: [edit, delete, react]}
+                conversation_id: {type: string}
+                error: {type: string}
+
+    # ------------------------------------------------------------ events: calls
+    CallData:
+      type: object
+      required: [call_id, channel, direction, from, to, person_id]
+      properties:
+        call_id: {type: string, pattern: "^call_"}
+        channel: {$ref: "#/components/schemas/ChannelName"}
+        direction: {type: string, enum: [inbound, outbound]}
+        from: {type: string}
+        to: {type: string}
+        person_id: {$ref: "#/components/schemas/PersonId"}
+
+    CallRingingEvent:
+      allOf:
+        - {$ref: "#/components/schemas/CallEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.call.ringing.v1}
+            data:
+              allOf:
+                - {$ref: "#/components/schemas/CallData"}
+                - type: object
+                  required: [route]
+                  properties:
+                    route: {type: [string, "null"]}
+
+    CallAnsweredEvent:
+      allOf:
+        - {$ref: "#/components/schemas/CallEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.call.answered.v1}
+            data: {$ref: "#/components/schemas/CallData"}
+
+    CallDtmfEvent:
+      allOf:
+        - {$ref: "#/components/schemas/CallEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.call.dtmf.v1}
+            data:
+              allOf:
+                - {$ref: "#/components/schemas/CallData"}
+                - type: object
+                  required: [digit]
+                  properties:
+                    digit: {type: string, pattern: "^[0-9*#A-D]$"}
+
+    CallStateEvent:
+      allOf:
+        - {$ref: "#/components/schemas/CallEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.call.state.v1}
+            data:
+              allOf:
+                - {$ref: "#/components/schemas/CallData"}
+                - type: object
+                  required: [state]
+                  properties:
+                    state: {type: string, enum: [reconnecting, connected]}
+
+    CallTransferredEvent:
+      allOf:
+        - {$ref: "#/components/schemas/CallEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.call.transferred.v1}
+            data:
+              allOf:
+                - {$ref: "#/components/schemas/CallData"}
+                - type: object
+                  required: [to]
+                  properties:
+                    reason: {type: string, description: "set when the transfer was a fallback"}
+
+    CallEndedEvent:
+      allOf:
+        - {$ref: "#/components/schemas/CallEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.call.ended.v1}
+            data:
+              allOf:
+                - {$ref: "#/components/schemas/CallData"}
+                - type: object
+                  required: [reason, duration_s, answered]
+                  properties:
+                    reason:
+                      type: string
+                      description: |
+                        lower-case; gateway reasons: hangup_api, agent_hangup or the agent's own,
+                        agent_unreachable, agent_lost, policy_rejected, no_route, rejected,
+                        media_failed, media_unsupported, gateway_shutdown, dial_failed: ...;
+                        platform reasons as reported (Signal: remote_hangup, timeout, ...;
+                        Telnyx: normal_clearing, ...)
+                    duration_s: {type: number, minimum: 0, description: "since answered; 0 if never"}
+                    answered: {type: boolean}
+
+    # ------------------------------------------------------------ events: channels
+    ChannelUpEvent:
+      allOf:
+        - {$ref: "#/components/schemas/Envelope"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.channel.up.v1}
+            data: {$ref: "#/components/schemas/ChannelData"}
+
+    ChannelDownEvent:
+      allOf:
+        - {$ref: "#/components/schemas/Envelope"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.channel.down.v1}
+            data: {$ref: "#/components/schemas/ChannelData"}
+
+    ChannelData:
+      type: object
+      required: [channel, detail]
+      properties:
+        channel: {$ref: "#/components/schemas/ChannelName"}
+        detail: {type: string}
+
+    # ------------------------------------------------------------ shared
+    ChannelName: {type: string, enum: [signal, slack, phone]}
+    PersonId: {type: [string, "null"], description: "configured person, null if unknown"}
+    Sender:
+      type: object
+      required: [id]
+      properties:
+        id: {type: string, description: "Signal ACI (or E.164), Slack user id"}
+        number: {type: [string, "null"]}
+        name: {type: [string, "null"]}
+        team: {type: [string, "null"]}
+    Part:
+      oneOf:
+        - type: object
+          required: [type, text]
+          properties:
+            type: {const: text}
+            text: {type: string}
+        - type: object
+          required: [type, attachment_id]
+          properties:
+            type: {const: file}
+            attachment_id: {type: [string, "null"]}
+            content_type: {type: [string, "null"]}
+            filename: {type: [string, "null"]}
+            size: {type: [integer, "null"]}
+            sha256: {type: string}
+            caption: {type: string}
+            missing: {type: boolean}
+        - type: object
+          required: [type]
+          properties:
+            type: {const: sticker}
+            pack_id: {type: [string, "null"]}
+            sticker_id: {type: [integer, string, "null"]}
+
+    # ------------------------------------------------------------ media: gateway -> agent
+    GatewayToAgent:
+      description: any gateway -> agent message (for validation)
+      oneOf:
+        - {$ref: "#/components/schemas/MediaConnected"}
+        - {$ref: "#/components/schemas/MediaStart"}
+        - {$ref: "#/components/schemas/MediaToAgent"}
+        - {$ref: "#/components/schemas/MediaMarkDone"}
+        - {$ref: "#/components/schemas/MediaDtmf"}
+        - {$ref: "#/components/schemas/MediaError"}
+        - {$ref: "#/components/schemas/MediaStop"}
+
+    MediaConnected:
+      type: object
+      required: [event, protocol, call_id]
+      properties:
+        event: {const: connected}
+        protocol: {const: voitta-media/1}
+        call_id: {type: string, pattern: "^call_"}
+        resumed: {type: boolean, description: "true after a reconnect; start follows again if the call was answered"}
+
+    MediaStart:
+      type: object
+      required: [event, call_id, channel, direction, from, to, person_id, capabilities, media_format, frame_ms]
+      properties:
+        event: {const: start}
+        call_id: {type: string, pattern: "^call_"}
+        channel: {$ref: "#/components/schemas/ChannelName"}
+        direction: {type: string, enum: [inbound, outbound]}
+        from: {type: string}
+        to: {type: string}
+        person_id: {$ref: "#/components/schemas/PersonId"}
+        capabilities:
+          type: object
+          required: [dtmf, transfer]
+          properties:
+            dtmf: {type: boolean}
+            transfer: {type: array, items: {type: string, enum: [blind, warm]}}
+        media_format:
+          type: object
+          required: [encoding, sample_rate, channels]
+          properties:
+            encoding: {const: pcm16le}
+            sample_rate: {type: integer, enum: [8000, 16000, 24000, 48000]}
+            channels: {const: 1}
+        frame_ms: {type: integer, minimum: 10, maximum: 100}
+
+    MediaToAgent:
+      type: object
+      required: [event, seq, ts_ms, payload]
+      properties:
+        event: {const: media}
+        seq: {type: integer, minimum: 1}
+        ts_ms: {type: integer, minimum: 0, description: "audio time of the frame start since start"}
+        payload: {type: string, contentEncoding: base64, description: "exactly frame_ms of pcm16le"}
+
+    MediaMarkDone:
+      type: object
+      required: [event, name, cleared]
+      properties:
+        event: {const: mark}
+        name: {type: string}
+        cleared: {type: boolean, description: "false: played; true: dropped by clear"}
+
+    MediaDtmf:
+      type: object
+      required: [event, digit]
+      properties:
+        event: {const: dtmf}
+        digit: {type: string, pattern: "^[0-9*#A-D]$"}
+
+    MediaError:
+      type: object
+      required: [event, code, message]
+      properties:
+        event: {const: error}
+        code: {type: string, enum: [buffer_full, binary_not_supported, unknown_event]}
+        message: {type: string}
+        buffered_ms: {type: integer}
+
+    MediaStop:
+      type: object
+      required: [event, reason]
+      properties:
+        event: {const: stop}
+        reason: {type: string, description: "same vocabulary as call.ended reason"}
+
+    # ------------------------------------------------------------ media: agent -> gateway
+    AgentToGateway:
+      description: any agent -> gateway message (for validation)
+      oneOf:
+        - {$ref: "#/components/schemas/MediaFromAgent"}
+        - {$ref: "#/components/schemas/MediaMark"}
+        - {$ref: "#/components/schemas/MediaClear"}
+        - {$ref: "#/components/schemas/MediaHangup"}
+
+    MediaFromAgent:
+      type: object
+      required: [event, payload]
+      properties:
+        event: {const: media}
+        payload: {type: string, contentEncoding: base64, description: "pcm16le at media_format, any length; ignored before start"}
+
+    MediaMark:
+      type: object
+      required: [event, name]
+      properties:
+        event: {const: mark}
+        name: {type: string}
+
+    MediaClear:
+      type: object
+      required: [event]
+      properties:
+        event: {const: clear}
+
+    MediaHangup:
+      type: object
+      required: [event]
+      properties:
+        event: {const: hangup}
+        reason: {type: string}

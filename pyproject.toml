@@ -1,0 +1,39 @@
+[project]
+name = "voitta-gateway"
+version = "0.1.0"
+description = "Messaging and voice gateway for Voitta agents: Signal, Slack, phone (Telnyx)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+    "websockets>=13",
+    "pydantic>=2.7",
+    "pyyaml>=6",
+    "numpy>=1.26",
+    "soxr>=0.4",
+    "pynacl>=1.5",
+    "slack-sdk>=3.33",
+    "aiohttp>=3.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+pipecat = ["pipecat-ai[websocket]>=0.0.90"]
+ask = ["faster-whisper>=1.1", "piper-tts>=1.3"]
+
+[project.scripts]
+voitta-gateway = "voitta_gateway.__main__:main"
+voitta-ask = "voitta_ask.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["voitta_gateway", "voitta_ask"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]

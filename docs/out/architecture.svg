@@ -1,0 +1,221 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="870" viewBox="0 0 1300 870">
+  <title>voitta-gateway — architecture and build status</title>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <rect x="40" y="20" width="1220" height="82" rx="12" fill="#f4f4f5" stroke="#52525b" stroke-width="1.8"/>
+  <text x="56" y="42" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" text-anchor="start" fill="#52525b">Config &amp; secrets</text>
+  <text x="56" y="59" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b" font-style="italic">per deployment</text>
+  <rect x="230" y="36" width="320" height="54" rx="8" fill="#f4f4f5" stroke="#52525b" stroke-width="1.5"/>
+  <rect x="504.4" y="28" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="523.2" y="40" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="390.0" y="59.75" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#52525b">gateway.yaml</text>
+  <text x="390.0" y="76.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">adapters · accounts · routes · policy · consumers</text>
+  <rect x="570" y="36" width="320" height="54" rx="8" fill="#f4f4f5" stroke="#52525b" stroke-width="1.5"/>
+  <rect x="844.4" y="28" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="863.2" y="40" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="730.0" y="59.75" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#52525b">secrets (.env)</text>
+  <text x="730.0" y="76.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">tokens · API keys · media secrets · signal-cli data</text>
+  <rect x="910" y="36" width="330" height="54" rx="8" fill="#f4f4f5" stroke="#52525b" stroke-width="1.5"/>
+  <rect x="1181.6" y="28" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="1206.8" y="40" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <text x="1075.0" y="59.75" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#52525b">identity map</text>
+  <text x="1075.0" y="76.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">person_id -&gt; Signal ACI · Slack user · E.164 (lookup)</text>
+  <text x="240" y="120" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="start" fill="#18181b">voitta-gateway  (one Python process on a Linux server · SQLite)</text>
+  <rect x="230" y="128" width="870" height="500" rx="14" fill="#fbfbfc" stroke="#3f3f46" stroke-width="2"/>
+  <text x="115" y="200" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#52525b">Platforms</text>
+  <rect x="40" y="212" width="150" height="56" rx="8" fill="#ffffff" stroke="#27272a" stroke-width="1.5"/>
+  <text x="115.0" y="237.25" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#18181b">Signal</text>
+  <text x="115.0" y="253.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">text · calls</text>
+  <rect x="40" y="292" width="150" height="56" rx="8" fill="#ffffff" stroke="#27272a" stroke-width="1.5"/>
+  <text x="115.0" y="317.25" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#18181b">Slack</text>
+  <text x="115.0" y="333.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">text · no bot voice</text>
+  <rect x="40" y="372" width="150" height="56" rx="8" fill="#fafafa" stroke="#a1a1aa" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="115.0" y="397.25" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#a1a1aa">WhatsApp · SMS</text>
+  <text x="115.0" y="413.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">Telegram ...</text>
+  <text x="1200" y="200" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#52525b">Platforms</text>
+  <rect x="1140" y="212" width="120" height="68" rx="8" fill="#ffffff" stroke="#27272a" stroke-width="1.5"/>
+  <text x="1200.0" y="243.25" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#18181b">Phone</text>
+  <text x="1200.0" y="259.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">PSTN</text>
+  <rect x="1140" y="300" width="120" height="68" rx="8" fill="#fafafa" stroke="#a1a1aa" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="1200.0" y="331.25" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#a1a1aa">WhatsApp</text>
+  <text x="1200.0" y="347.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">calling</text>
+  <rect x="250" y="160" width="380" height="282" rx="12" fill="#eaf1fe" stroke="#1d4ed8" stroke-width="1.8"/>
+  <text x="266" y="182" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" text-anchor="start" fill="#1d4ed8">Messaging layer</text>
+  <text x="266" y="199" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b" font-style="italic">text · media · reactions · async</text>
+  <rect x="270" y="212" width="170" height="56" rx="8" fill="#eaf1fe" stroke="#1d4ed8" stroke-width="1.5"/>
+  <rect x="381.6" y="204" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="406.8" y="216" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <text x="355.0" y="236.75" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#1d4ed8">Signal adapter</text>
+  <text x="355.0" y="253.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">signal-cli JSON-RPC (TCP)</text>
+  <rect x="270" y="292" width="170" height="56" rx="8" fill="#eaf1fe" stroke="#1d4ed8" stroke-width="1.5"/>
+  <rect x="381.6" y="284" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="406.8" y="296" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <text x="355.0" y="316.75" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#1d4ed8">Slack adapter</text>
+  <text x="355.0" y="333.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">Socket Mode</text>
+  <rect x="270" y="372" width="170" height="56" rx="8" fill="#fafafa" stroke="#a1a1aa" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <rect x="375.2" y="364" width="56.8" height="16" rx="8" fill="#9ca3af"/>
+  <text x="403.6" y="376" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PLANNED</text>
+  <text x="355.0" y="396.75" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#a1a1aa">more adapters</text>
+  <text x="355.0" y="413.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">WhatsApp · SMS · ...</text>
+  <rect x="466" y="290" width="152" height="138" rx="8" fill="#eaf1fe" stroke="#1d4ed8" stroke-width="1.5"/>
+  <rect x="559.6" y="282" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="584.8" y="294" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <text x="542.0" y="327.25" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#1d4ed8">Message</text>
+  <text x="542.0" y="342.75" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">conversation_id</text>
+  <text x="542.0" y="357.25" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">sender · person_id</text>
+  <text x="542.0" y="371.75" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">parts[] · attachments</text>
+  <text x="542.0" y="386.25" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">reply_to · edit · delete</text>
+  <text x="542.0" y="400.75" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">status: queued-&gt;read</text>
+  <polyline points="190,240 270,240" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="270,240 261.8,243.7 261.8,236.3" fill="#3f3f46"/>
+  <polygon points="190,240 198.2,236.3 198.2,243.7" fill="#3f3f46"/>
+  <polyline points="190,320 270,320" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="270,320 261.8,323.7 261.8,316.3" fill="#3f3f46"/>
+  <polygon points="190,320 198.2,316.3 198.2,323.7" fill="#3f3f46"/>
+  <polyline points="190,400 270,400" fill="none" stroke="#a1a1aa" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="6 4"/>
+  <polygon points="270,400 261.8,403.7 261.8,396.3" fill="#a1a1aa"/>
+  <polygon points="190,400 198.2,396.3 198.2,403.7" fill="#a1a1aa"/>
+  <polyline points="440,254 453,254 453,305 466,305" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="466,305 457.8,308.7 457.8,301.3" fill="#3f3f46"/>
+  <polyline points="440,330 466,330" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="466,330 457.8,333.7 457.8,326.3" fill="#3f3f46"/>
+  <polyline points="440,400 466,400" fill="none" stroke="#a1a1aa" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="6 4"/>
+  <polygon points="466,400 457.8,403.7 457.8,396.3" fill="#a1a1aa"/>
+  <rect x="660" y="160" width="420" height="282" rx="12" fill="#e7f6ee" stroke="#047857" stroke-width="1.8"/>
+  <text x="676" y="182" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" text-anchor="start" fill="#047857">Voice layer</text>
+  <text x="676" y="199" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b" font-style="italic">real-time audio</text>
+  <rect x="680" y="212" width="180" height="68" rx="8" fill="#e7f6ee" stroke="#047857" stroke-width="1.5"/>
+  <rect x="814.4" y="204" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="833.2" y="216" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="770.0" y="235.0" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#047857">Signal calls</text>
+  <text x="770.0" y="251.5" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">signal-cli + tunnel x N</text>
+  <text x="770.0" y="267.0" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">Pulse 48 kHz bridge</text>
+  <rect x="880" y="212" width="180" height="68" rx="8" fill="#e7f6ee" stroke="#047857" stroke-width="1.5"/>
+  <rect x="1001.6" y="204" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="1026.8" y="216" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <text x="970.0" y="235.0" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#047857">Phone adapter</text>
+  <text x="970.0" y="251.5" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">Telnyx Call Control +</text>
+  <text x="970.0" y="267.0" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">media streaming (L16)</text>
+  <rect x="680" y="318" width="380" height="110" rx="8" fill="#e7f6ee" stroke="#047857" stroke-width="1.5"/>
+  <rect x="995.2" y="310" width="56.8" height="16" rx="8" fill="#b45309"/>
+  <text x="1023.6" y="322" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PARTIAL</text>
+  <text x="870.0" y="347.5" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#047857">CallSession</text>
+  <text x="870.0" y="363.5" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">built: initiated -&gt; ringing -&gt; answered -&gt; ended (reason)</text>
+  <text x="870.0" y="378.5" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">built: agent connect first · grace period · fallback</text>
+  <text x="870.0" y="393.5" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">planned: legs in a bridge (warm transfer, conference)</text>
+  <text x="870.0" y="408.5" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">planned: answering-machine detection · recording</text>
+  <polyline points="770,280 770,318" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="770,318 766.3,309.8 773.7,309.8" fill="#3f3f46"/>
+  <polygon points="770,280 773.7,288.2 766.3,288.2" fill="#3f3f46"/>
+  <polyline points="970,280 970,318" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="970,318 966.3,309.8 973.7,309.8" fill="#3f3f46"/>
+  <polygon points="970,280 973.7,288.2 966.3,288.2" fill="#3f3f46"/>
+  <polyline points="440,240 680,240" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="680,240 671.8,243.7 671.8,236.3" fill="#3f3f46"/>
+  <polygon points="440,240 448.2,236.3 448.2,243.7" fill="#3f3f46"/>
+  <rect x="491.3" y="224.0" width="137.4" height="16" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="560" y="234" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">callEvent · startCall</text>
+  <polyline points="60,212 60,142 720,142 720,212" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="720,212 716.3,203.8 723.7,203.8" fill="#047857"/>
+  <polygon points="60,212 56.3,203.8 63.7,203.8" fill="#047857"/>
+  <rect x="312.8" y="136.0" width="174.3" height="16" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="400" y="146" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#047857">call audio · RingRTC / SRTP</text>
+  <polyline points="1140,246 1060,246" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="1060,246 1068.2,242.3 1068.2,249.7" fill="#047857"/>
+  <polygon points="1140,246 1131.8,249.7 1131.8,242.3" fill="#047857"/>
+  <rect x="1084.2" y="226.5" width="31.5" height="15.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="1100" y="236" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#047857">PSTN</text>
+  <polyline points="1140,334 1060,290" fill="none" stroke="#a1a1aa" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="6 4"/>
+  <polygon points="1060,290 1069.0,290.7 1065.4,297.2" fill="#a1a1aa"/>
+  <polyline points="440,442 440,456" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="440,456 436.3,447.8 443.7,447.8" fill="#3f3f46"/>
+  <polyline points="870,442 870,456" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="870,456 866.3,447.8 873.7,447.8" fill="#3f3f46"/>
+  <rect x="250" y="456" width="270" height="34" rx="8" fill="#fdf2f8" stroke="#be185d" stroke-width="1.5"/>
+  <text x="385" y="478" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="bold" text-anchor="middle" fill="#be185d">event log · SQLite (WAL) · replay</text>
+  <rect x="474.4" y="448" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="493.2" y="460" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <rect x="530" y="456" width="270" height="34" rx="8" fill="#fdf2f8" stroke="#be185d" stroke-width="1.5"/>
+  <text x="665" y="478" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="bold" text-anchor="middle" fill="#be185d">policy: allowlist · opt-out · 911 block</text>
+  <rect x="741.6" y="448" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="766.8" y="460" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <rect x="810" y="456" width="270" height="34" rx="8" fill="#fdf2f8" stroke="#be185d" stroke-width="1.5"/>
+  <text x="945" y="478" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="bold" text-anchor="middle" fill="#be185d">outbox · attachments · idempotency</text>
+  <rect x="1021.6" y="448" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="1046.8" y="460" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <rect x="250" y="502" width="830" height="120" rx="12" fill="#fff6e5" stroke="#b45309" stroke-width="1.8"/>
+  <text x="266" y="524" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" text-anchor="start" fill="#b45309">Gateway API</text>
+  <rect x="262" y="536" width="262" height="78" rx="8" fill="#fff6e5" stroke="#b45309" stroke-width="1.5"/>
+  <rect x="478.4" y="528" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="497.2" y="540" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="393.0" y="557.5" font-family="Helvetica, Arial, sans-serif" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#b45309">Commands · REST</text>
+  <text x="393.0" y="573.0" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">calls: start / answer / hangup (live)</text>
+  <text x="393.0" y="587.5" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">messages · reactions (tested)</text>
+  <text x="393.0" y="602.0" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">spec/gateway.openapi.yaml</text>
+  <rect x="534" y="536" width="262" height="78" rx="8" fill="#fff6e5" stroke="#b45309" stroke-width="1.5"/>
+  <rect x="750.4" y="528" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="769.2" y="540" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="665.0" y="557.5" font-family="Helvetica, Arial, sans-serif" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#b45309">Events · stream</text>
+  <text x="665.0" y="573.0" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">CloudEvents · 19 types · per-conv seq</text>
+  <text x="665.0" y="587.5" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">SSE + long-poll · cursor replay</text>
+  <text x="665.0" y="602.0" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">spec/voitta.asyncapi.yaml</text>
+  <rect x="806" y="536" width="262" height="78" rx="8" fill="#fff6e5" stroke="#b45309" stroke-width="1.5"/>
+  <rect x="1022.4" y="528" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="1041.2" y="540" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="937.0" y="557.5" font-family="Helvetica, Arial, sans-serif" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#b45309">Media · WS per call</text>
+  <text x="937.0" y="573.0" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">voitta-media/1 · gateway connects</text>
+  <text x="937.0" y="587.5" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">start · media · mark · clear · stop</text>
+  <text x="937.0" y="602.0" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" text-anchor="middle" fill="#52525b">spec/voitta.asyncapi.yaml</text>
+  <rect x="250" y="672" width="830" height="124" rx="12" fill="#f3ecfe" stroke="#6d28d9" stroke-width="1.8"/>
+  <text x="266" y="694" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" text-anchor="start" fill="#6d28d9">Rest of the system</text>
+  <rect x="262" y="708" width="192" height="76" rx="8" fill="#fafafa" stroke="#a1a1aa" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <rect x="389.2" y="700" width="56.8" height="16" rx="8" fill="#9ca3af"/>
+  <text x="417.6" y="712" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PLANNED</text>
+  <text x="358.0" y="734.75" font-family="Helvetica, Arial, sans-serif" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#a1a1aa">Agent core (text)</text>
+  <text x="358.0" y="751.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">manhattan-logic bot</text>
+  <text x="358.0" y="766.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">port: phase 3</text>
+  <rect x="464" y="708" width="192" height="76" rx="8" fill="#f3ecfe" stroke="#6d28d9" stroke-width="1.5"/>
+  <rect x="610.4" y="700" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="629.2" y="712" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="560.0" y="734.75" font-family="Helvetica, Arial, sans-serif" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#6d28d9">voitta-ask</text>
+  <text x="560.0" y="751.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">text -&gt; call -&gt; transcript</text>
+  <text x="560.0" y="766.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">Piper TTS · Whisper (GPU)</text>
+  <rect x="666" y="708" width="192" height="76" rx="8" fill="#f3ecfe" stroke="#6d28d9" stroke-width="1.5"/>
+  <rect x="799.6" y="700" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="824.8" y="712" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <text x="762.0" y="734.75" font-family="Helvetica, Arial, sans-serif" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#6d28d9">Pipecat bot</text>
+  <text x="762.0" y="751.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">our serializer · echo mode</text>
+  <text x="762.0" y="766.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">STT -&gt; LLM -&gt; TTS (keys)</text>
+  <rect x="868" y="708" width="192" height="76" rx="8" fill="#fafafa" stroke="#a1a1aa" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <rect x="995.2" y="700" width="56.8" height="16" rx="8" fill="#9ca3af"/>
+  <text x="1023.6" y="712" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PLANNED</text>
+  <text x="964.0" y="734.75" font-family="Helvetica, Arial, sans-serif" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#a1a1aa">Other services</text>
+  <text x="964.0" y="751.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">CRM · schedulers</text>
+  <text x="964.0" y="766.75" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">dashboards</text>
+  <polyline points="393,672 393,614" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="393,614 396.7,622.2 389.3,622.2" fill="#3f3f46"/>
+  <rect x="352.0" y="638.0" width="81.9" height="16" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="393" y="648" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">HTTP + token</text>
+  <polyline points="665,614 665,672" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="665,672 661.3,663.8 668.7,663.8" fill="#3f3f46"/>
+  <rect x="614.8" y="638.0" width="100.4" height="16" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="665" y="648" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">SSE / long-poll</text>
+  <polyline points="937,614 937,672" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="937,672 933.3,663.8 940.7,663.8" fill="#3f3f46"/>
+  <polygon points="937,614 940.7,622.2 933.3,622.2" fill="#3f3f46"/>
+  <rect x="868.3" y="638.0" width="137.4" height="16" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="937" y="648" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">WS (gateway connects)</text>
+  <polyline points="1000,102 1000,128" fill="none" stroke="#52525b" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="6 4"/>
+  <polygon points="1000,128 996.3,119.8 1003.7,119.8" fill="#52525b"/>
+  <rect x="40.0" y="828" width="37.6" height="16" rx="8" fill="#15803d"/>
+  <text x="58.8" y="840" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
+  <text x="85.6" y="840" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built; tested end to end on real Signal calls (.212)</text>
+  <rect x="412.6" y="828" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="437.8" y="840" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <text x="470.96000000000004" y="840" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built; tested end to end against simulated platforms</text>
+  <rect x="797.9" y="828" width="56.8" height="16" rx="8" fill="#b45309"/>
+  <text x="826.3" y="840" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PARTIAL</text>
+  <text x="862.72" y="840" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built in part (see text)</text>
+  <rect x="1022.2" y="828" width="56.8" height="16" rx="8" fill="#9ca3af"/>
+  <text x="1050.6" y="840" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PLANNED</text>
+  <text x="1087.0400000000002" y="840" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">designed, not built</text>
+</svg>
