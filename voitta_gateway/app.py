@@ -41,11 +41,21 @@ def build(cfg: Config, *, signal_port_factory=None, telnyx_http=None) -> tuple[G
         gw.messaging["signal"] = s
         if a.signal.calls:
             gw.voice["signal"] = s
+    ingress = None
+
+    def _ingress() -> FastAPI:
+        nonlocal ingress
+        if ingress is None:
+            ingress = FastAPI(title="voitta-gateway ingress", docs_url=None, redoc_url=None, openapi_url=None)
+        return ingress
+
     if a.slack:
         from .adapters.slack import SlackAdapter
-        gw.messaging["slack"] = SlackAdapter(a.slack, cfg.secret(a.slack.bot_token_secret),
-                                             cfg.secret(a.slack.app_token_secret))
-    ingress = None
+        sl = SlackAdapter(a.slack, cfg.secret(a.slack.bot_token_secret), cfg.secret(a.slack.app_token_secret))
+        gw.messaging["slack"] = sl
+        if a.slack.calls:
+            gw.voice["slack"] = sl
+            sl.mount(_ingress())
     if a.phone:
         from .adapters.telnyx import TelnyxAdapter
         t = TelnyxAdapter(a.phone, cfg.secret(a.phone.api_key_secret),
@@ -54,8 +64,7 @@ def build(cfg: Config, *, signal_port_factory=None, telnyx_http=None) -> tuple[G
         if a.phone.verify_signatures and not a.phone.public_key_secret:
             raise ValueError("adapters.phone.verify_signatures needs public_key_secret")
         gw.voice["phone"] = t
-        ingress = FastAPI(title="voitta-gateway ingress", docs_url=None, redoc_url=None, openapi_url=None)
-        t.mount(ingress)
+        t.mount(_ingress())
     api = build_api(gw)
     return gw, api, ingress
 

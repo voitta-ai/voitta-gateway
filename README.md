@@ -16,7 +16,7 @@ Phone   ─┘   (one process)    └─ media WebSocket    (per call; the gatew
 | Channel | Messaging | Voice |
 |---|---|---|
 | Signal | signal-cli JSON-RPC daemon | signal-call-tunnel + PulseAudio (experimental, Linux) |
-| Slack | Socket Mode | none (bots can't join huddles) |
+| Slack | Socket Mode (watchdog, blocks, buttons, history) | voice clips -> transcripts; outbound calls via a browser join page |
 | Phone | — | Telnyx Call Control + media streaming, L16 16 kHz |
 
 ## Run it
@@ -50,6 +50,7 @@ GET  /v1/health · /v1/channels · /v1/identities/{person_id}
 POST /v1/messages                     {to, parts[], reply_to?, idempotency_key?} -> 202 queued
 POST /v1/messages/{id}/edit|delete|reactions
 POST /v1/conversations/{id}/typing    {on}
+GET  /v1/conversations/{id}/history  ?thread=<message_id>&limit=25   (Slack)
 POST /v1/attachments                  raw body (+ X-Filename)  ·  GET /v1/attachments/{id}
 GET  /v1/events                       SSE; resume with Last-Event-ID or ?after=evt_N (after=now)
 GET  /v1/events/poll                  ?after=&types=message.*,call.*&wait=10
@@ -92,10 +93,26 @@ Audio sent before `start` is dropped. If the agent's socket drops mid-call the g
 reconnects for `grace_s`, then falls back (hang up or transfer). Pipecat agents use
 `voitta_gateway.agent.pipecat.VoittaMediaSerializer` ([examples/pipecat_bot.py](examples/pipecat_bot.py)).
 
+## Slack
+
+App: create it from [deploy/slack-app-manifest.yaml](deploy/slack-app-manifest.yaml) (a separate app from
+shmobster), put `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN` in `.env`.
+
+- **Messaging** over Socket Mode, with shmobster's lessons: a watchdog for sessions that reconnect
+  without working, the bot token sent only to `https://*.slack.com`, other bots heard only when they
+  mention us (`sender.kind: bot`), `@here` counts as addressed, Block Kit out (`{"type": "blocks"}`
+  parts), button clicks in (`interaction.received`), thread history on request.
+- **Voice clips** arrive as audio parts with a `transcript`: Slack's own if complete, otherwise from
+  voitta-speech (`speech:` in gateway.yaml points at voitta-ask, which serves `/v1/speech/*`).
+- **Calls** (`adapters.slack.calls`): `POST /v1/calls {"to": "U…", "via": "slack"}` DMs a card with a
+  Join button; the page (served on the ingress) streams the microphone over a WebSocket into the same
+  media protocol, so voitta-ask works unchanged. Slack bots cannot join huddles. Needs a public HTTPS
+  `public_base_url` (browsers allow the microphone only on https or localhost).
+
 ## Tests
 
 ```bash
-pytest -q        # 36 tests: units, end to end, spec conformance
+pytest -q        # 46 tests: units, end to end, spec conformance, the Slack join page in headless Chrome
 VOITTA_ASK_REAL=run/ask.yaml pytest tests/test_ask_real.py   # real Piper + Whisper (GPU host)
 ```
 

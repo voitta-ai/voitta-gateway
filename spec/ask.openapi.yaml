@@ -75,6 +75,56 @@ paths:
               schema: {$ref: "#/components/schemas/Ask"}
         default: {$ref: "#/components/responses/Error"}
 
+  /v1/speech/transcribe:
+    post:
+      operationId: transcribe
+      summary: Transcribe an audio file (voitta-speech, same process and models)
+      description: |
+        Any container and codec PyAV reads: m4a/AAC (Slack clips), webm/Opus, ogg, mp3, wav, and
+        Signal voice notes (AAC). The gateway uses this for inbound voice clips.
+      parameters:
+        - {name: language, in: query, description: "ISO 639-1; omit to detect", schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, contentMediaType: application/octet-stream}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [text, language, duration_s, elapsed_s]
+                properties:
+                  text: {type: string}
+                  language: {type: [string, "null"]}
+                  duration_s: {type: number, minimum: 0}
+                  elapsed_s: {type: number, minimum: 0}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/speech/synthesize:
+    post:
+      operationId: synthesize
+      summary: Text to speech, as a WAV file (pcm16, 16 kHz, mono)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: {type: string, minLength: 1, maxLength: 2000}
+      responses:
+        "200":
+          description: the audio
+          content:
+            audio/wav:
+              schema: {type: string, contentMediaType: audio/wav}
+        default: {$ref: "#/components/responses/Error"}
+
 components:
   securitySchemes:
     bearer: {type: http, scheme: bearer}
@@ -107,13 +157,13 @@ components:
       properties:
         to:
           oneOf:
-            - {type: string, description: "Signal ACI or E.164"}
+            - {type: string, description: "Signal ACI or E.164; Slack user id (U...); E.164 for phone"}
             - type: object
               required: [person_id]
               properties:
                 person_id: {type: string}
         text: {type: string, minLength: 1, maxLength: 800}
-        via: {type: string, enum: [signal, phone], default: signal}
+        via: {type: string, enum: [signal, phone, slack], default: signal}
         language: {type: [string, "null"], default: en, description: "ISO 639-1 for transcription; null = detect"}
         idempotency_key: {type: string}
 
@@ -124,7 +174,7 @@ components:
         ask_id: {type: string, pattern: "^ask_"}
         state: {type: string, enum: [calling, ringing, speaking, listening, transcribing, done, no_answer, failed]}
         to: {type: string}
-        via: {type: string, enum: [signal, phone]}
+        via: {type: string, enum: [signal, phone, slack]}
         call_id: {type: [string, "null"]}
         text: {type: string}
         transcript: {type: [string, "null"], description: "set when done; empty string if nothing was said"}

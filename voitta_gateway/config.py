@@ -47,11 +47,26 @@ class SignalConfig(BaseModel):
     pulse_latency_ms: int = 40
 
 
+class SlackCalls(BaseModel):
+    """Outbound voice calls on Slack: a DM with a Join link that opens our browser page.
+
+    Slack bots cannot join huddles, and apps outside Slack's partner program are meant to
+    start Calls API calls from a slash command, so the default card is an ordinary message
+    with a Join button; `card: calls_api` tries Slack's native call card first."""
+    public_base_url: str                            # where callees' browsers reach the ingress
+    route: str | None = None                        # default agent route for these calls
+    ring_timeout_s: float = 60.0                    # not joined by then -> ended, unanswered
+    card: Literal["button", "calls_api"] = "button"
+    title: str = "Voitta"
+
+
 class SlackConfig(BaseModel):
     bot_token_secret: str
     app_token_secret: str
-    channels: Literal["mention", "all"] = "mention"  # DMs always count
+    channels: Literal["mention", "all"] = "mention"  # DMs always count; @here/@channel count too
+    bots: Literal["ignore", "mention"] = "mention"   # other bots' posts: dropped, or only when they mention us
     min_interval_s: float = 1.1                     # per channel, Slack allows ~1 msg/s
+    calls: SlackCalls | None = None
 
 
 class PhoneConfig(BaseModel):
@@ -94,9 +109,18 @@ class Policy(BaseModel):
     emergency_numbers: list[str] = ["911", "112", "999", "000", "110", "119", "933"]
 
 
+class Speech(BaseModel):
+    """Optional: transcribe inbound voice clips (Slack clips, Signal voice notes) through the
+    voitta-speech API (mounted in voitta-ask). The gateway itself runs no models."""
+    url: str                                        # e.g. http://127.0.0.1:8791
+    token_secret: str
+    timeout_s: float = 60.0
+    language: str | None = None                     # None = detect
+
+
 class Listen(BaseModel):
     api: str = "127.0.0.1:8700"                     # private: commands, events, admin
-    ingress: str | None = None                      # public: Telnyx webhooks + media
+    ingress: str | None = None                      # public: Telnyx webhooks + media, Slack call pages
 
 
 class Config(BaseModel):
@@ -108,6 +132,7 @@ class Config(BaseModel):
     consumers: dict[str, Consumer] = {}
     persons: dict[str, Person] = {}
     policy: Policy = Policy()
+    speech: Speech | None = None
     idempotency_ttl_s: int = 24 * 3600
     max_send_attempts: int = 5
 
@@ -122,7 +147,8 @@ class Config(BaseModel):
         return v
 
     def model_post_init(self, __context) -> None:
-        for a in (self.adapters.signal, self.adapters.phone):
+        slack_calls = self.adapters.slack.calls if self.adapters.slack else None
+        for a in (self.adapters.signal, self.adapters.phone, slack_calls):
             if a and a.route and a.route not in self.routes:
                 raise ValueError(f"adapter route {a.route!r} is not defined under routes")
         if self.env_file and Path(self.env_file).exists():

@@ -54,6 +54,7 @@ channels:
       contactOptedIn: {$ref: "#/components/messages/contactOptedIn"}
       operationDone: {$ref: "#/components/messages/operationDone"}
       operationFailed: {$ref: "#/components/messages/operationFailed"}
+      interactionReceived: {$ref: "#/components/messages/interactionReceived"}
       callRinging: {$ref: "#/components/messages/callRinging"}
       callAnswered: {$ref: "#/components/messages/callAnswered"}
       callDtmf: {$ref: "#/components/messages/callDtmf"}
@@ -107,6 +108,7 @@ operations:
       - {$ref: "#/channels/events/messages/contactOptedIn"}
       - {$ref: "#/channels/events/messages/operationDone"}
       - {$ref: "#/channels/events/messages/operationFailed"}
+      - {$ref: "#/channels/events/messages/interactionReceived"}
       - {$ref: "#/channels/events/messages/callRinging"}
       - {$ref: "#/channels/events/messages/callAnswered"}
       - {$ref: "#/channels/events/messages/callDtmf"}
@@ -155,6 +157,7 @@ components:
     contactOptedIn: {name: ai.voitta.contact.opted_in.v1, summary: "sender sent START after STOP", payload: {$ref: "#/components/schemas/ContactOptedInEvent"}}
     operationDone: {name: ai.voitta.operation.done.v1, summary: "edit / delete / react went through", payload: {$ref: "#/components/schemas/OperationDoneEvent"}}
     operationFailed: {name: ai.voitta.operation.failed.v1, payload: {$ref: "#/components/schemas/OperationFailedEvent"}}
+    interactionReceived: {name: ai.voitta.interaction.received.v1, summary: "a button or menu in one of our messages was used (Slack)", payload: {$ref: "#/components/schemas/InteractionReceivedEvent"}}
     callRinging: {name: ai.voitta.call.ringing.v1, payload: {$ref: "#/components/schemas/CallRingingEvent"}}
     callAnswered: {name: ai.voitta.call.answered.v1, payload: {$ref: "#/components/schemas/CallAnsweredEvent"}}
     callDtmf: {name: ai.voitta.call.dtmf.v1, payload: {$ref: "#/components/schemas/CallDtmfEvent"}}
@@ -192,6 +195,7 @@ components:
         - {$ref: "#/components/schemas/ContactOptedInEvent"}
         - {$ref: "#/components/schemas/OperationDoneEvent"}
         - {$ref: "#/components/schemas/OperationFailedEvent"}
+        - {$ref: "#/components/schemas/InteractionReceivedEvent"}
         - {$ref: "#/components/schemas/CallRingingEvent"}
         - {$ref: "#/components/schemas/CallAnsweredEvent"}
         - {$ref: "#/components/schemas/CallDtmfEvent"}
@@ -391,6 +395,26 @@ components:
                 op: {type: string, enum: [edit, delete, react]}
                 conversation_id: {type: string}
 
+    InteractionReceivedEvent:
+      allOf:
+        - {$ref: "#/components/schemas/ConversationEvent"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.interaction.received.v1}
+            data:
+              type: object
+              required: [conversation_id, message_id, platform_id, person_id, sender, action_id, block_id, action_type, value]
+              properties:
+                conversation_id: {type: string}
+                message_id: {type: [string, "null"], description: "our message the control was in, if known"}
+                platform_id: {type: [string, "null"]}
+                person_id: {$ref: "#/components/schemas/PersonId"}
+                sender: {$ref: "#/components/schemas/Sender"}
+                action_id: {type: [string, "null"]}
+                block_id: {type: [string, "null"]}
+                action_type: {type: [string, "null"], description: "button, static_select, ..."}
+                value: {type: [string, "null"]}
+
     OperationFailedEvent:
       allOf:
         - {$ref: "#/components/schemas/ConversationEvent"}
@@ -540,6 +564,7 @@ components:
         number: {type: [string, "null"]}
         name: {type: [string, "null"]}
         team: {type: [string, "null"]}
+        kind: {type: string, enum: [human, bot], description: "bot: another app's post that mentioned us (Slack)"}
     Part:
       oneOf:
         - type: object
@@ -558,6 +583,11 @@ components:
             sha256: {type: string}
             caption: {type: string}
             missing: {type: boolean}
+            clip: {type: boolean, description: "recorded in Slack as a voice clip"}
+            duration_s: {type: [number, "null"]}
+            transcript: {type: string, description: "audio parts: what was said"}
+            transcript_source: {type: string, enum: [slack, voitta-speech]}
+            transcript_error: {type: string}
         - type: object
           required: [type]
           properties:

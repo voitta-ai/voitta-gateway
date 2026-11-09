@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{{TITLE}} call</title>
+<style>
+  :root { color-scheme: light dark; --fg:#18181b; --muted:#52525b; --bg:#f4f4f5; --card:#ffffff;
+          --accent:#047857; --danger:#b91c1c; }
+  @media (prefers-color-scheme: dark) { :root { --fg:#f4f4f5; --muted:#a1a1aa; --bg:#18181b; --card:#27272a; } }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--fg);
+         font:16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { background:var(--card); border-radius:16px; padding:32px 36px; width:min(420px, 88vw);
+         box-shadow:0 6px 28px rgba(0,0,0,.10); text-align:center; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  #status { color:var(--muted); margin:0 0 22px; min-height:1.45em; }
+  button { font:inherit; font-weight:600; border:0; border-radius:999px; padding:12px 28px; margin:4px;
+           cursor:pointer; color:#fff; }
+  button:disabled { opacity:.6; cursor:default; }
+  #join { background:var(--accent); }
+  #hangup { background:var(--danger); }
+  [hidden] { display:none !important; }
+  .meter { height:8px; border-radius:4px; background:rgba(127,127,127,.25); margin:20px 0 0; overflow:hidden; }
+  .meter > div { height:100%; width:0; background:var(--accent); transition:width .08s linear; }
+  .note { font-size:13px; color:var(--muted); margin:18px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>{{TITLE}}</h1>
+  <p id="status">is calling you</p>
+  <button id="join">Join call</button>
+  <button id="hangup" hidden>Hang up</button>
+  <div class="meter" id="meter" hidden><div id="level"></div></div>
+  <p class="note">Your microphone is used only during this call. Headphones give the best sound.</p>
+</main>
+<script>
+"use strict";
+const STATE = "{{STATE}}";
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status"), joinBtn = $("join"), hangBtn = $("hangup"), meter = $("meter"), level = $("level");
+const params = new URLSearchParams(location.search);
+const wsUrl = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + location.pathname
+              + "/audio" + location.search;
+
+// Capture: mic -> pcm16 frames of 20 ms. Player: pcm16 -> speaker, ~60 ms jitter buffer, "clear" empties it.
+const WORKLETS = `
+class Capture extends AudioWorkletProcessor {
+  constructor() { super(); this.frame = Math.round(sampleRate / 50); this.buf = new Int16Array(this.frame);
+                  this.n = 0; this.peak = 0; }
+  process(inputs, outputs) {
+    const ch = inputs[0] && inputs[0][0];
+    if (ch) for (let i = 0; i < ch.length; i++) {
+      const s = Math.max(-1, Math.min(1, ch[i]));
+      this.peak = Math.max(this.peak * 0.9996, Math.abs(s));
+      this.buf[this.n++] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      if (this.n === this.frame) {
+        this.port.postMessage({ pcm: this.buf.buffer, peak: this.peak }, [this.buf.buffer]);
+        this.buf = new Int16Array(this.frame); this.n = 0;
+      }
+    }
+    return true;
+  }
+}
+class Player extends AudioWorkletProcessor {
+  constructor() {
+    super(); this.q = []; this.off = 0; this.queued = 0; this.playing = false;
+    this.played = 0; this.underruns = 0; this.blocks = 0;
+    this.port.onmessage = (e) => {
+      if (e.data === "clear") { this.q = []; this.off = 0; this.queued = 0; this.playing = false; return; }
+      const a = new Int16Array(e.data), f = new Float32Array(a.length);
+      for (let i = 0; i < a.length; i++) f[i] = a[i] / 32768;
+      this.q.push(f); this.queued += f.length;
+    };
+  }
+  process(inputs, outputs) {
+    const out = outputs[0][0];
+    if (!this.playing && this.queued >= sampleRate * 0.06) this.playing = true;
+    let i = 0;
+    if (this.playing) {
+      while (i < out.length && this.q.length) {
+        const cur = this.q[0], take = Math.min(out.length - i, cur.length - this.off);
+        out.set(cur.subarray(this.off, this.off + take), i);
+        i += take; this.off += take; this.queued -= take; this.played += take;
+        if (this.off === cur.length) { this.q.shift(); this.off = 0; }
+      }
+      if (i < out.length) { this.underruns++; this.playing = false; }
+    }
+    for (; i < out.length; i++) out[i] = 0;
+    if (++this.blocks % 125 === 0) this.port.postMessage({
+      played_ms: Math.round(this.played * 1000 / sampleRate), underruns: this.underruns,
+      buffered_ms: Math.round(this.queued * 1000 / sampleRate) });
+    return true;
+  }
+}
+registerProcessor("voitta-capture", Capture);
+registerProcessor("voitta-player", Player);`;
+
+let ctx = null, stream = null, ws = null, player = null, statsTimer = null;
+let joined = false, ended = false, retries = 0, capturedMs = 0, lastStats = {};
+
+function setStatus(text) { statusEl.textContent = text; }
+
+async function join() {
+  if (joined || ended) return;
+  if (!window.isSecureContext || !navigator.mediaDevices) {
+    setStatus("This page needs https:// (or localhost) to use the microphone.");
+    return;
+  }
+  joinBtn.disabled = true;
+  setStatus("Starting the microphone…");
+  try {
+    try { ctx = new AudioContext({ sampleRate: 48000, latencyHint: "interactive" }); }
+    catch (e) { ctx = new AudioContext({ latencyHint: "interactive" }); }
+    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLETS], { type: "application/javascript" })));
+    stream = await navigator.mediaDevices.getUserMedia({ audio: {
+      echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+    await ctx.resume();
+  } catch (e) {
+    setStatus("Could not use the microphone: " + (e && e.message ? e.message : e));
+    joinBtn.disabled = false;
+    if (ctx) { ctx.close(); ctx = null; }
+    return;
+  }
+  const source = ctx.createMediaStreamSource(stream);
+  const capture = new AudioWorkletNode(ctx, "voitta-capture", { outputChannelCount: [1] });
+  const mute = ctx.createGain();
+  mute.gain.value = 0;
+  source.connect(capture).connect(mute).connect(ctx.destination);   // keeps the capture node running
+  player = new AudioWorkletNode(ctx, "voitta-player", { numberOfInputs: 0, outputChannelCount: [1] });
+  player.connect(ctx.destination);
+  capture.port.onmessage = (e) => {
+    capturedMs += 20;
+    level.style.width = Math.min(100, Math.round(e.data.peak * 140)) + "%";
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(e.data.pcm);
+  };
+  player.port.onmessage = (e) => { lastStats = e.data; };
+  joined = true;
+  joinBtn.hidden = true; hangBtn.hidden = false; meter.hidden = false;
+  connect();
+  statsTimer = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN)
+      ws.send(JSON.stringify(Object.assign({ event: "stats", captured_ms: capturedMs }, lastStats)));
+  }, 1000);
+}
+
+function connect() {
+  setStatus(retries ? "Reconnecting…" : "Connecting…");
+  ws = new WebSocket(wsUrl);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => { retries = 0; ws.send(JSON.stringify({ event: "hello", rate: ctx.sampleRate })); setStatus("Connected"); };
+  ws.onmessage = (e) => {
+    if (typeof e.data === "string") {
+      const m = JSON.parse(e.data);
+      if (m.event === "clear") player.port.postMessage("clear");
+      else if (m.event === "ended") finish("The call has ended");
+      return;
+    }
+    player.port.postMessage(e.data, [e.data]);
+  };
+  ws.onclose = () => {
+    if (ended) return;
+    if (retries++ < 8) setTimeout(connect, 1000);
+    else finish("Connection lost");
+  };
+}
+
+function finish(text) {
+  if (ended) return;
+  ended = true;
+  clearInterval(statsTimer);
+  try { if (ws) ws.close(); } catch (e) {}
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  if (ctx) setTimeout(() => ctx.close(), 300);
+  setStatus(text);
+  joinBtn.hidden = true; hangBtn.hidden = true; meter.hidden = true;
+}
+
+hangBtn.onclick = () => {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ event: "hangup" }));
+  finish("You hung up");
+};
+joinBtn.onclick = join;
+if (STATE === "ended") finish("This call has ended");
+else if (params.get("autojoin") === "1") join();
+</script>
+</body>
+</html>

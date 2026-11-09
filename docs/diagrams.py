@@ -45,7 +45,7 @@ def architecture() -> SVG:
     # Platforms
     s.text(115, 200, "Platforms", size=13, weight="bold", color=MUTED)
     s.box(40, 212, 150, 56, "Signal", ["text · calls"], kind="platform")
-    s.box(40, 292, 150, 56, "Slack", ["text · no bot voice"], kind="platform")
+    s.box(40, 292, 150, 56, "Slack", ["text · clips · calls*"], kind="platform")
     s.box(40, 372, 150, 56, "WhatsApp · SMS", ["Telegram ..."], kind="later", dashed=True)
     s.text(1200, 200, "Platforms", size=13, weight="bold", color=MUTED)
     s.box(1140, 212, 120, 68, "Phone", ["PSTN"], kind="platform")
@@ -55,7 +55,8 @@ def architecture() -> SVG:
     s.group(250, 160, 380, 282, "Messaging layer", "msg", sub="text · media · reactions · async")
     s.box(270, 212, 170, 56, "Signal adapter", ["signal-cli JSON-RPC (TCP)"],
           kind="msg", title_size=13, status="tested")
-    s.box(270, 292, 170, 56, "Slack adapter", ["Socket Mode"], kind="msg", title_size=13, status="tested")
+    s.box(270, 292, 170, 56, "Slack adapter", ["Socket Mode · watchdog"], kind="msg", title_size=13,
+          status="tested")
     s.box(270, 372, 170, 56, "more adapters", ["WhatsApp · SMS · ..."], kind="later", dashed=True,
           title_size=13, status="planned")
     s.box(466, 290, 152, 138, "Message",
@@ -71,24 +72,28 @@ def architecture() -> SVG:
 
     # Voice layer
     s.group(660, 160, 420, 282, "Voice layer", "voice", sub="real-time audio")
-    s.box(680, 212, 180, 68, "Signal calls", ["signal-cli + tunnel x N", "Pulse 48 kHz bridge"],
-          kind="voice", title_size=13, status="live")
-    s.box(880, 212, 180, 68, "Phone adapter", ["Telnyx Call Control +", "media streaming (L16)"],
-          kind="voice", title_size=13, status="tested")
+    s.box(676, 212, 124, 68, "Signal calls", ["signal-cli + tunnel", "Pulse 48 kHz"],
+          kind="voice", title_size=12.5, line_size=10.5, status="live")
+    s.box(808, 212, 124, 68, "Slack calls", ["DM card -> Join page", "browser WS pcm16"],
+          kind="voice", title_size=12.5, line_size=10.5, status="tested")
+    s.box(940, 212, 124, 68, "Phone", ["Telnyx Call Control", "media stream (L16)"],
+          kind="voice", title_size=12.5, line_size=10.5, status="tested")
     s.box(680, 318, 380, 110, "CallSession",
           ["built: initiated -> ringing -> answered -> ended (reason)",
            "built: agent connect first · grace period · fallback",
            "planned: legs in a bridge (warm transfer, conference)",
            "planned: answering-machine detection · recording"],
           kind="voice", title_size=13, line_size=11, status="partial")
-    s.arrow([(770, 280), (770, 318)], both=True)
-    s.arrow([(970, 280), (970, 318)], both=True)
-    s.arrow([(440, 240), (680, 240)], both=True, label="callEvent · startCall",
-            label_at=(560, 234))
-    s.arrow([(60, 212), (60, 142), (720, 142), (720, 212)], both=True, color=GREEN,
-            label="call audio · RingRTC / SRTP", label_at=(400, 146), label_color=GREEN)
-    s.arrow([(1140, 246), (1060, 246)], both=True, color=GREEN)
-    s.text(1100, 236, "PSTN", size=10.5, color=GREEN, bg=True)
+    for x in (738, 870, 1002):
+        s.arrow([(x, 280), (x, 318)], both=True)
+    s.arrow([(440, 240), (676, 240)], both=True, label="callEvent · startCall",
+            label_at=(558, 234))
+    s.arrow([(60, 212), (60, 146), (646, 146), (646, 262), (676, 262)], both=True, color=GREEN,
+            label="Signal call audio · RingRTC / SRTP", label_at=(330, 150), label_color=GREEN)
+    s.arrow([(40, 320), (28, 320), (28, 134), (848, 134), (848, 212)], both=True, color=GREEN,
+            label="Slack call audio · callee's browser · WebSocket", label_at=(560, 138), label_color=GREEN)
+    s.arrow([(1140, 246), (1064, 246)], both=True, color=GREEN)
+    s.text(1102, 236, "PSTN", size=10.5, color=GREEN, bg=True)
     s.arrow([(1140, 334), (1060, 290)], dashed=True, color="#a1a1aa")
 
     # Gateway core: three parts with different status
@@ -96,7 +101,7 @@ def architecture() -> SVG:
     s.arrow([(870, 442), (870, 456)])
     for x, label, st in ((250, "event log · SQLite (WAL) · replay", "live"),
                          (530, "policy: allowlist · opt-out · 911 block", "tested"),
-                         (810, "outbox · attachments · idempotency", "tested")):
+                         (810, "outbox · files · clip transcripts", "tested")):
         s.rect(x, 456, 270, 34, "core")
         s.text(x + 135, 478, label, size=11.5, color="#be185d", weight="bold")
         s.badge(x + 262, 456, st)
@@ -104,10 +109,10 @@ def architecture() -> SVG:
     # API band
     s.group(250, 502, 830, 120, "Gateway API", "api")
     s.box(262, 536, 262, 78, "Commands · REST",
-          ["calls: start / answer / hangup (live)", "messages · reactions (tested)",
+          ["calls: start / answer / hangup (live)", "messages · blocks · history (tested)",
            "spec/gateway.openapi.yaml"], kind="api", title_size=12.5, line_size=10.5, status="live")
     s.box(534, 536, 262, 78, "Events · stream",
-          ["CloudEvents · 19 types · per-conv seq", "SSE + long-poll · cursor replay",
+          ["CloudEvents · 20 types · per-conv seq", "SSE + long-poll · cursor replay",
            "spec/voitta.asyncapi.yaml"], kind="api", title_size=12.5, line_size=10.5, status="live")
     s.box(806, 536, 262, 78, "Media · WS per call",
           ["voitta-media/1 · gateway connects", "start · media · mark · clear · stop",
@@ -117,8 +122,8 @@ def architecture() -> SVG:
     s.group(250, 672, 830, 124, "Rest of the system", "consumer")
     s.box(262, 708, 192, 76, "Agent core (text)", ["manhattan-logic bot", "port: phase 3"],
           kind="later", dashed=True, title_size=12.5, status="planned")
-    s.box(464, 708, 192, 76, "voitta-ask", ["text -> call -> transcript", "Piper TTS · Whisper (GPU)"],
-          kind="consumer", title_size=12.5, status="live")
+    s.box(464, 708, 192, 76, "voitta-ask + speech", ["text -> call -> transcript",
+          "speech API: Piper · Whisper GPU"], kind="consumer", title_size=12.5, line_size=10.5, status="live")
     s.box(666, 708, 192, 76, "Pipecat bot", ["our serializer · echo mode", "STT -> LLM -> TTS (keys)"],
           kind="consumer", title_size=12.5, status="tested")
     s.box(868, 708, 192, 76, "Other services", ["CRM · schedulers", "dashboards"],
@@ -128,6 +133,8 @@ def architecture() -> SVG:
     s.arrow([(937, 614), (937, 672)], both=True, label="WS (gateway connects)", label_at=(937, 648))
 
     s.arrow([(1000, 102), (1000, 128)], dashed=True, color="#52525b")
+    s.text(1260, 852, "* Slack bots cannot join huddles: a Slack call is our own page, opened from a DM",
+           size=11, anchor="end", color=MUTED, italic=True)
     s.legend(40, 836)
     return s
 
@@ -236,6 +243,42 @@ def seq_ask() -> SVG:
     q.msg("gw", "ask", "stop · event call.ended", dashed=True)
     q.msg("cl", "ask", "GET /v1/asks/{id}?wait=60")
     q.msg("ask", "cl", "done · transcript  (t = 27.5 s)")
+    q.heads(q.y)
+    s.h = int(q.y + 24)
+    return s
+
+
+# ----------------------------------------------------------------------------
+# 4b. Outbound Slack call through the browser join page
+# ----------------------------------------------------------------------------
+def seq_slack_call() -> SVG:
+    s = SVG(1240, 900, "Slack call")
+    corner_status(s, "tested", "simulated Slack; join page in headless Chrome; not yet live")
+    q = Sequence(s, [
+        ("ag", "Agent\nvoitta-ask · Pipecat", "consumer"),
+        ("gw", "voitta-gateway\nAPI · Slack adapter · ingress", "core"),
+        ("sl", "Slack\nWeb API", "platform"),
+        ("br", "Callee's browser\njoin page", "platform"),
+    ], top=40, head_w=210)
+    q.msg("ag", "gw", "POST /v1/calls {to: U..., via: slack, route}")
+    q.msg("gw", "ag", "WS connect (signed) · connected", color=GREEN)
+    q.msg("gw", "sl", "conversations.open · chat.postMessage (card with Join button)")
+    q.msg("sl", "br", "DM notification · click Join -> opens the page")
+    q.msg("gw", "ag", "event call.ringing  (ring timeout 60 s -> missed)", dashed=True)
+    q.msg("br", "gw", "GET /slack/call/{id}?t=<per-call token>  (HTML)")
+    q.note("sl", "br", "page: click Join -> microphone permission · AudioWorklet capture + player", kind="neutral", pad=60)
+    q.msg("br", "gw", "WS /slack/call/{id}/audio · hello {rate: 48000}")
+    q.msg("gw", "sl", "chat.update: card -> \"On a call\"", dashed=True)
+    q.msg("gw", "ag", "start {pcm16le, 16 kHz}  · event call.answered")
+    q.msg("br", "gw", "mic: pcm16 48 kHz, binary, 20 ms", color=GREEN)
+    q.msg("gw", "ag", "media frames 16 kHz", color=GREEN)
+    q.msg("ag", "gw", "media · mark · clear", color=GREEN)
+    q.msg("gw", "br", "pcm16 48 kHz (paced) · {event: clear}", color=GREEN)
+    q.note("gw", "br", "page reload: same call resumes (10 s grace) · tab closed: remote_hangup", kind="core", pad=95)
+    q.msg("ag", "gw", "hangup")
+    q.msg("gw", "br", "{event: ended} · close")
+    q.msg("gw", "sl", "chat.update: card -> \"Call ended · 0:27\"", dashed=True)
+    q.msg("gw", "ag", "stop · event call.ended", dashed=True)
     q.heads(q.y)
     s.h = int(q.y + 24)
     return s
@@ -370,10 +413,10 @@ def roadmap() -> SVG:
             "latency vs Signal: open"]),
         ("2 · Freeze the API", "api", "partial", [
             "OpenAPI + AsyncAPI v1: done", "checked in every test: done",
-            "CallSession: 1 of 2 paths live", "client library: open"]),
-        ("3 · Messaging adapters", "msg", "partial", [
-            "Signal + Slack adapters built", "tested with simulators",
-            "manhattan-logic not switched", "voice: 212 number only"]),
+            "calls: Signal live, others tested", "manhattan-logic: not yet"]),
+        ("3 · Slack", "msg", "tested", [
+            "messaging hardened (shmobster)", "voice clips -> transcripts",
+            "calls via browser join page", "live: needs the Slack app"]),
         ("4 · More channels", "later", "planned", [
             "WhatsApp (msg + calling)", "SMS via trunk", "Telegram / Discord",
             "warm transfer · conference"]),
@@ -400,6 +443,7 @@ FIGURES = {
     "seq-message": (seq_message, "Inbound message and reply"),
     "seq-call": (seq_call, "Inbound call (same flow for phone and Signal)"),
     "seq-ask": (seq_ask, "voitta-ask: text spoken on a call, answer transcribed (live)"),
+    "seq-slack-call": (seq_slack_call, "Outbound Slack call through the browser join page"),
     "deployment-poc": (deployment_poc, "The POC as it runs on .212"),
     "deployment": (deployment, "Target deployment on one Linux server"),
     "roadmap": (roadmap, "Roadmap and progress"),

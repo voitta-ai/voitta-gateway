@@ -191,9 +191,13 @@ def build() -> Path:
          "against these specs."),
         ("Thin gateway, separate agents. ", "The gateway translates platforms and enforces policy; agents "
          "such as voitta-ask decide what to say and talk to it only through the API."),
+        ("Slack in both layers. ", "Messaging hardened with shmobster's lessons, voice clips arrive with "
+         "transcripts, and outbound voice calls run through a browser join page (Slack bots cannot join huddles). "
+         "Built and tested end to end against a simulated Slack and in headless Chrome; not yet on a live "
+         "workspace (section 7)."),
         ("Scope for now: outbound calls on the 212 number. ", "Incoming calls and other numbers are out of "
          "scope. The bot (manhattan-logic) and the gateway cannot hold the account at the same time, so they "
-         "switch by hand (section 8)."),
+         "switch by hand (section 9)."),
     ])
 
     # ---- 2 status
@@ -215,7 +219,13 @@ def build() -> Path:
         ["Signal calls: inbound", "tested", "simulated only; no live inbound call yet"],
         ["Signal messaging (send, receive, receipts, reactions, edits, groups)", "tested",
          "simulated signal-cli; one message sent live via manhattan-logic's daemon"],
-        ["Slack messaging (Socket Mode)", "tested", "stubbed Web API; no workspace connected yet"],
+        ["Slack messaging: Socket Mode, watchdog, safe downloads, bots, @here, blocks, buttons, history",
+         "tested", "simulated Slack Web API; needs the Voitta Slack app installed (manifest in deploy/)"],
+        ["Slack voice clips -> transcripts (Slack's own, else voitta-speech)", "tested",
+         "simulated Slack; real AAC/Opus clips transcribed on .212 by the real models"],
+        ["Slack calls: DM card + browser join page", "tested",
+         "page run in headless Chrome with a fake microphone; needs a public HTTPS URL for live use"],
+        ["voitta-speech API (transcribe, synthesize)", "live", "running in voitta-ask on .212; 0.1-0.3 s per clip"],
         ["Phone via Telnyx (signed webhooks, L16 media, DTMF, dial-out)", "tested",
          "simulated Telnyx incl. big-endian audio; needs a Telnyx account"],
         ["Event log, SSE + long-poll, replay, cursor reset", "live", "SQLite (WAL); used by voitta-ask live"],
@@ -224,7 +234,8 @@ def build() -> Path:
         ["Durable outbox, pacing, retries, idempotency", "tested", "survives restarts (persisted first)"],
         ["Media protocol voitta-media/1", "live", "start, media, mark, clear, stop, hangup used on live calls"],
         ["CallSession", "partial", "single leg; no warm transfer, conference, recording or AMD"],
-        ["voitta-ask (text -> call -> transcript)", "live", "Piper TTS (CPU) + faster-whisper small (GPU)"],
+        ["voitta-ask (text -> call -> transcript)", "live",
+         "Piper TTS (CPU) + faster-whisper small (GPU); over Slack calls: tested"],
         ["Pipecat serializer + example bot", "tested", "echo mode in a real Pipecat pipeline; LLM mode needs keys"],
         ["Formal specs (OpenAPI 3.1 x2, AsyncAPI 3.1)", "live",
          "validated by official tools; all test traffic checked against them"],
@@ -245,8 +256,8 @@ def build() -> Path:
         "hearing the text, answering, and 1.5 s of silence that marks the end of the answer.",
         "Machine time is small: Piper synthesizes a sentence in about 0.15 s; Whisper small transcribes "
         "an 8-second answer in about 0.3 s on the RTX 3090.",
-        "Automated suite: 36 tests pass in about 27 s (unit, end to end, spec conformance); one more runs "
-        "the real models on .212 and passes.",
+        "Automated suite: 46 tests pass in about 40 s (unit, end to end, spec conformance, the join page in "
+        "headless Chrome); four more run the real models on .212 and pass.",
     ])
 
     # ---- 3 usual approach
@@ -310,8 +321,10 @@ policy: {inbound_allowlist: [p_roman], block_emergency_numbers: true}
          "listens, and writes each notification to the database before processing it. Message ids are "
          "author ACI + sent timestamp. In groups the agent sees only messages that mention it (configurable)."),
         ("Slack adapter: ", "Socket Mode (outbound WebSocket only, no public ingress). DMs open on demand; a "
-         "reply to a channel message goes into its thread; about one message per second per channel."),
-        ("Common Message: ", "conversation_id, sender and person_id, parts (text, file, sticker), reply_to, "
+         "reply to a channel message goes into its thread; about one message per second per channel. Section 7 "
+         "covers what it took from shmobster and the voice side."),
+        ("Common Message: ", "conversation_id, sender (with kind: human or bot) and person_id, parts (text, "
+         "file, sticker; outbound also blocks), reply_to, "
          "edits and deletes, and an outbound status that only moves forward: queued, sent, delivered, read "
          "or failed."),
         ("Capabilities: ", "each adapter declares what it supports (GET /v1/channels); unsupported operations "
@@ -444,8 +457,59 @@ g->a {"event":"stop","reason":"ask_done"}
     ])
     figure(doc, "seq-ask")
 
-    # ---- 7 lessons
-    doc.add_heading("7. What the POC taught us", 1)
+    # ---- 7 slack
+    doc.add_heading("7. Slack: messaging and voice", 1)
+    status_line(doc, "tested", "built and tested against a simulated Slack and in headless Chrome; not yet live.")
+    para(doc, "Slack gives bots no audio: apps cannot join huddles (they only see who is in one), and the "
+              "Calls API is a directory of third-party calls, not a media path. So Slack voice is built from what "
+              "the platform does allow: voice clips as files, and calls on our own page, announced in Slack.")
+    doc.add_heading("7.1 Messaging, hardened with shmobster's lessons", 2)
+    para(doc, "shmobster (voitta-ai/shmobster) has run on Slack for months with Bolt and Socket Mode. "
+              "What it learned, and what the adapter now does:")
+    table(doc, ["shmobster lesson", "In the gateway"], [
+        ["A Socket Mode session can reconnect forever without delivering anything (13 days, 52,707 sessions).",
+         "Watchdog on two signals: no pong for 60 s, or 6 sessions in 5 minutes. It rebuilds the client with "
+         "backoff and reports channel.down / up."],
+        ["The bot token must not leave Slack; an unauthorised download is a 200 with the sign-in page.",
+         "Downloads follow redirects by hand, send the token only to https *.slack.com, and refuse text/html."],
+        ["Agents share workspaces; a voice listener posts as a bot.",
+         "Other bots' posts arrive only when they mention us, marked sender.kind = bot (configurable)."],
+        ["@here and @channel address everyone in the room, the agent included.", "They count as addressed."],
+        ["Approval cards with buttons; a click is acknowledged within 3 s.",
+         "blocks message parts out; interaction.received events in (acknowledged on receipt)."],
+        ["Replies need the thread so far.", "GET /v1/conversations/{id}/history, with sender kind self / bot / human."],
+        ["Two programs on one app's tokens both answer every event.",
+         "A separate Voitta app; manifest in deploy/slack-app-manifest.yaml with only the scopes used."],
+    ], widths=[8.0, 9.0])
+    doc.add_heading("7.2 Voice clips", 2)
+    bullets(doc, [
+        "A clip (subtype slack_audio) arrives as an audio file part with clip: true, its duration and a transcript.",
+        "Slack's own transcript is used when it is complete; otherwise the gateway sends the audio to voitta-speech "
+        "(the speech API now mounted in voitta-ask, same models) and records transcript_source. The gateway runs "
+        "no models itself, and the same path transcribes Signal voice notes.",
+        "Only senders that pass policy are transcribed: a stranger's clip is held untouched.",
+        "Verified on .212 with the real models: AAC in m4a and Opus in webm both transcribed word for word, in "
+        "about 0.1 to 0.3 s per clip.",
+    ])
+    doc.add_heading("7.3 Calls through a browser join page", 2)
+    bullets(doc, [
+        "POST /v1/calls with via: slack DMs the callee a card with a Join button. The link opens a page served on "
+        "the gateway's ingress, protected by a per-call token.",
+        "The page captures the microphone with an AudioWorklet (echo cancellation and noise suppression on), "
+        "sends 20 ms pcm16 frames over a WebSocket, and plays the agent's audio from a small jitter buffer that "
+        "clear empties at once (barge-in).",
+        "It plugs into the same media protocol as Signal and phone calls: voitta-ask asks over Slack unchanged.",
+        "Not joined within the ring timeout: missed. Page reloaded: the call resumes (10 s grace). Tab closed: "
+        "remote_hangup. The card in the DM follows the call: ringing, on a call, ended with its length, missed.",
+        "card: calls_api posts Slack's native call card instead (calls.add); if Slack refuses it, the call is ended "
+        "there and the Join button is used.",
+        "Needs a public HTTPS address for live use: browsers only give microphone access on https or localhost. "
+        "No TURN server is needed, because the page talks plain WebSocket to the gateway.",
+    ])
+    figure(doc, "seq-slack-call")
+
+    # ---- 8 lessons
+    doc.add_heading("8. What the POC taught us", 1)
     table(doc, ["Finding", "Consequence"], [
         ["Signal does not ring for calls from unknown numbers; the call times out silently.",
          "Callees must know the number first (a message exchange or a contact). Send a short heads-up "
@@ -459,7 +523,7 @@ g->a {"event":"stop","reason":"ask_done"}
          "callers. Porting the patches is a prerequisite for production."],
         ["Only one signal-cli daemon can hold an account.",
          "The bot and the gateway switch by hand (about a minute). Decide: a separate voice number, or "
-         "manhattan-logic as a gateway consumer (section 8)."],
+         "manhattan-logic as a gateway consumer (section 9)."],
         ["A gateway that exits uncleanly left its signal-cli running beside the bot's.",
          "signal-cli now dies with the gateway (Linux parent-death signal); SIGHUP shuts the gateway down cleanly."],
         ["After a database reset an agent's event cursor pointed past the end of the log; it missed call.ended "
@@ -468,13 +532,17 @@ g->a {"event":"stop","reason":"ask_done"}
          "ring deadline. Regression tests cover both."],
         ["Whisper small heard \"Asian pairs\" for \"Asian pears\".",
          "Try a larger Whisper model (the GPU has room) or pass expected vocabulary as a prompt."],
+        ["faster-whisper 1.2.1 cannot decode files with PyAV 19 (it passes an argument PyAV removed).",
+         "voitta-speech decodes with PyAV directly; caught by the real-model test of clip formats."],
+        ["Chrome's sandboxed audio service cannot read a fake-microphone file; the page then records silence.",
+         "The browser test disables that sandbox feature; the page itself is unaffected."],
         ["Shared host: ports 8765 and 8790 were already taken.",
          "All ports are configurable; .212 uses 8700 (gateway), 7583 (signal-cli) and 8791 (voitta-ask)."],
     ], widths=[8.0, 9.0])
 
     # ---- 8 deployment
-    doc.add_heading("8. Deployment", 1)
-    doc.add_heading("8.1 The POC on .212", 2)
+    doc.add_heading("9. Deployment", 1)
+    doc.add_heading("9.1 The POC on .212", 2)
     status_line(doc, "live", "as run for the calls in section 2.2.")
     figure(doc, "deployment-poc")
     bullets(doc, [
@@ -482,7 +550,7 @@ g->a {"event":"stop","reason":"ask_done"}
         "Switching the 212 account: stop manhattan-logic, start the gateway, call, stop the gateway, "
         "start manhattan-logic with its start.sh. Messages that arrive meanwhile go to the gateway.",
     ])
-    doc.add_heading("8.2 Target deployment", 2)
+    doc.add_heading("9.2 Target deployment", 2)
     status_line(doc, "planned", "Dockerfile, Compose file and Caddy config are written; the image has not been built.")
     figure(doc, "deployment")
     bullets(doc, [
@@ -495,7 +563,7 @@ g->a {"event":"stop","reason":"ask_done"}
     ])
 
     # ---- 9 review
-    doc.add_heading("9. Review against current practice (November 2026)", 1)
+    doc.add_heading("10. Review against current practice (November 2026)", 1)
     para(doc, "Before building, the design was checked against published practice and platform documentation. "
               "These changes were made then and are now in the code:")
     table(doc, ["Area", "Original idea", "Changed to", "Why"], [
@@ -519,11 +587,12 @@ g->a {"event":"stop","reason":"ask_done"}
         ["Spec", "OpenAPI", "OpenAPI + AsyncAPI", "OpenAPI does not describe WebSockets"],
     ], widths=[2.6, 3.3, 4.3, 6.8])
 
-    doc.add_heading("9.1 Platform status", 2)
+    doc.add_heading("10.1 Platform status", 2)
     table(doc, ["Platform", "Messaging", "Voice for a bot", "Notes"], [
         ["Signal", "signal-cli JSON-RPC", "Experimental (0.14.2+); works",
          "Tunnel built by us; 1:1 only; unknown callers do not ring; latest signal-cli 0.14.10"],
-        ["Slack", "Socket Mode", "None", "Apps cannot join huddles"],
+        ["Slack", "Socket Mode", "No media API",
+         "Apps cannot join huddles; voice = clips (files) and our own join page"],
         ["Phone (PSTN)", "SMS via carrier", "Mature", "Telnyx Call Control + media streaming"],
         ["WhatsApp", "Cloud API", "Calling API (GA Jul 2025)",
          "Business-initiated calls not available for US/Canada numbers"],
@@ -533,7 +602,7 @@ g->a {"event":"stop","reason":"ask_done"}
         ["Google Meet", "-", "Media API shutting down", "Endpoints off 15 Jan 2027"],
     ], widths=[2.4, 3.0, 3.6, 8.0])
 
-    doc.add_heading("9.2 Compliance", 2)
+    doc.add_heading("10.2 Compliance", 2)
     bullets(doc, [
         ("Signal terms: ", "no bulk messaging, auto-messaging or auto-dialing. Use a dedicated number; call "
          "only people who expect it."),
@@ -545,7 +614,7 @@ g->a {"event":"stop","reason":"ask_done"}
     ])
 
     # ---- 10 roadmap
-    doc.add_heading("10. Roadmap", 1)
+    doc.add_heading("11. Roadmap", 1)
     figure(doc, "roadmap")
     table(doc, ["Phase", "Status", "Done when"], [
         ["0 · Signal call spike", "live",
@@ -555,13 +624,14 @@ g->a {"event":"stop","reason":"ask_done"}
          "with Signal."],
         ["2 · Freeze the API", "partial",
          "Specs v1 written and enforced in tests. Left: the phone path live, a generated client library."],
-        ["3 · Messaging adapters", "partial",
-         "Signal and Slack adapters built and simulated. Left: live accounts, manhattan-logic as a consumer."],
+        ["3 · Slack", "tested",
+         "Messaging, voice clips and calls built and simulated; join page tested in headless Chrome. Left: install "
+         "the Voitta app, a public HTTPS address for the join page, a live call."],
         ["4 · More channels", "planned", "WhatsApp, SMS, Telegram; warm transfer and conferences."],
     ], widths=[4.0, 2.0, 11.0], status_col=1)
 
     # ---- 11 next
-    doc.add_heading("11. Next steps and open questions", 1)
+    doc.add_heading("12. Next steps and open questions", 1)
     bullets(doc, [
         ("Scope decision (8 Nov 2026): ", "outbound calls only, on the 212 number. Incoming calls and "
          "additional numbers are out of scope for now; the hand switch between manhattan-logic and the gateway "
@@ -570,6 +640,8 @@ g->a {"event":"stop","reason":"ask_done"}
          "contacts (CVE-2026-113380)."),
         ("Upgrade signal-cli to 0.14.10 everywhere at once ", "(database migration is one way); then the "
          "native build can place calls too."),
+        ("Slack, to go live: ", "create the Voitta app from deploy/slack-app-manifest.yaml, put its two tokens "
+         "in .env, and give the ingress a public HTTPS name (a reverse proxy or tunnel to .212) for the join page."),
         ("Telnyx: ", "open an account and buy a number to run phase 1."),
         ("Transcription quality: ", "try Whisper medium or large-v3 on the RTX 3090, and a vocabulary prompt."),
         ("Make the disclosure and recording notice a fixed part of every outbound call.", ""),
@@ -587,6 +659,9 @@ g->a {"event":"stop","reason":"ask_done"}
         "RingRTC CVE-2026-113380: helpnetsecurity.com/2026/10/22/signal-ringrtc-vulnerability-cve-2026-113380/",
         "Signal terms: signal.org/legal/",
         "Slack Socket Mode vs HTTP: docs.slack.dev/apis/events-api/comparing-http-socket-mode/",
+        "Slack Calls API: docs.slack.dev/apis/web-api/using-the-calls-api/",
+        "Slack files and clips: docs.slack.dev/messaging/working-with-files/",
+        "shmobster (Slack lessons): github.com/voitta-ai/shmobster",
         "Telnyx media streaming: developers.telnyx.com/docs/voice/programmable-voice/media-streaming",
         "Twilio Media Streams messages: twilio.com/docs/voice/media-streams/websocket-messages",
         "Pipecat transports: docs.pipecat.ai/pipecat/learn/transports",

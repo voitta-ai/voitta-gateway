@@ -1,0 +1,54 @@
+# The "Voitta" Slack app for voitta-gateway.
+#
+#   api.slack.com/apps -> Create New App -> From an app manifest -> pick the workspace -> paste this.
+#   1. Install to workspace; copy the Bot User OAuth Token (xoxb-...)      -> .env SLACK_BOT_TOKEN
+#   2. Basic Information -> App-Level Tokens -> Generate, scope connections:write
+#      copy it (xapp-...)                                                   -> .env SLACK_APP_TOKEN
+#   3. Invite the bot where it should listen: /invite @Voitta
+#
+# A separate app from shmobster on purpose: two programs on one app's tokens both
+# receive every event and both answer.
+#
+# Scopes are the set the adapter calls, nothing more:
+#   messaging   app_mentions:read chat:write {channels,groups,im,mpim}:history im:write
+#               reactions:read reactions:write files:read files:write
+#   calls       calls:read calls:write   (only for adapters.slack.calls.card: calls_api;
+#                                         the default Join-button card needs neither)
+display_information:
+  name: Voitta
+  description: Voitta assistant (messages and voice calls through voitta-gateway).
+  background_color: "#1d4ed8"
+features:
+  bot_user:
+    display_name: Voitta
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - chat:write
+      - channels:history
+      - groups:history
+      - im:history
+      - mpim:history
+      - im:write
+      - reactions:read
+      - reactions:write
+      - files:read
+      - files:write
+      - calls:read
+      - calls:write
+settings:
+  socket_mode_enabled: true
+  interactivity:
+    is_enabled: true            # button clicks arrive over Socket Mode; no request URL needed
+  event_subscriptions:
+    bot_events:
+      - message.channels
+      - message.groups
+      - message.im
+      - message.mpim
+      - reaction_added
+      - reaction_removed
+  org_deploy_enabled: false
+  token_rotation_enabled: false

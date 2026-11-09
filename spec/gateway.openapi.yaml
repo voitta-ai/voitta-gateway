@@ -184,6 +184,32 @@ paths:
         "200": {$ref: "#/components/responses/Ok"}
         default: {$ref: "#/components/responses/Error"}
 
+  /v1/conversations/{conversation_id}/history:
+    get:
+      operationId: getHistory
+      summary: Recent messages, read from the platform (channels with the `history` capability)
+      description: |
+        Newest last. With `thread`, the messages of the thread that message belongs to.
+        Includes messages the gateway never delivered as events (other people talking without
+        a mention, the agent's own posts): this is context, not a second event stream.
+      x-scope: events:read
+      parameters:
+        - {name: conversation_id, in: path, required: true, schema: {type: string}}
+        - {name: thread, in: query, description: "message_id in this conversation", schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 25}}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [conversation_id, messages]
+                properties:
+                  conversation_id: {type: string}
+                  messages: {type: array, items: {$ref: "#/components/schemas/HistoryMessage"}}
+        default: {$ref: "#/components/responses/Error"}
+
   /v1/attachments:
     post:
       operationId: uploadAttachment
@@ -568,6 +594,11 @@ components:
             typing: {type: boolean}
             threads: {type: boolean}
             receipts: {type: array, items: {type: string, enum: [delivered, read]}}
+            markdown: {type: boolean}
+            blocks: {type: boolean, description: "accepts `blocks` parts (Slack Block Kit)"}
+            history: {type: boolean, description: "GET /v1/conversations/{id}/history works"}
+            interactions: {type: boolean, description: "emits interaction.received for buttons and menus"}
+            voice_clips: {type: boolean}
             max_attachment_mb: {type: number}
         calls:
           description: call capabilities, null for messaging-only channels
@@ -598,6 +629,33 @@ components:
         - {$ref: "#/components/schemas/TextPart"}
         - {$ref: "#/components/schemas/FilePart"}
         - {$ref: "#/components/schemas/StickerPart"}
+        - {$ref: "#/components/schemas/BlocksPart"}
+    HistoryMessage:
+      type: object
+      required: [platform_id, thread, time, sender, parts, message_id, person_id]
+      properties:
+        platform_id: {type: string, description: "the platform's id (Slack ts)"}
+        thread: {type: [string, "null"]}
+        time: {type: string, format: date-time}
+        sender:
+          type: object
+          required: [id, kind]
+          properties:
+            id: {type: [string, "null"]}
+            kind: {type: string, enum: [human, bot, self]}
+            name: {type: [string, "null"]}
+            team: {type: [string, "null"]}
+        parts: {type: array, items: {$ref: "#/components/schemas/Part"}}
+        message_id: {type: [string, "null"], description: "our id, if the gateway has seen this message"}
+        person_id: {type: [string, "null"]}
+    BlocksPart:
+      description: "Slack Block Kit blocks, sent as is (outbound only; channels with the `blocks` capability)"
+      type: object
+      required: [type, blocks]
+      properties:
+        type: {const: blocks}
+        blocks: {type: array, minItems: 1, items: {type: object}}
+        text: {type: string, description: "notification / fallback text"}
     TextPart:
       type: object
       required: [type, text]
@@ -616,6 +674,11 @@ components:
         sha256: {type: string}
         caption: {type: string}
         missing: {type: boolean}
+        clip: {type: boolean, description: "recorded in Slack as a voice clip"}
+        duration_s: {type: [number, "null"]}
+        transcript: {type: string, description: "audio parts: what was said"}
+        transcript_source: {type: string, enum: [slack, voitta-speech]}
+        transcript_error: {type: string}
     StickerPart:
       type: object
       required: [type]
@@ -677,12 +740,12 @@ components:
       properties:
         to:
           oneOf:
-            - {type: string, description: "E.164 for phone; Signal ACI or E.164 for signal"}
+            - {type: string, description: "E.164 for phone; Signal ACI or E.164 for signal; Slack user id (U...) for slack"}
             - type: object
               required: [person_id]
               properties:
                 person_id: {type: string}
-        via: {type: string, enum: [phone, signal], description: "default: first voice channel the person has"}
+        via: {type: string, enum: [phone, signal, slack], description: "default: first voice channel the person has (phone, signal, slack)"}
         route: {type: string, description: "gateway route (agent media URL); default: the adapter's route"}
         idempotency_key: {type: string}
 

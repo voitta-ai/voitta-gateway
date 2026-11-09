@@ -5,7 +5,7 @@ import httpx
 import numpy as np
 import pytest
 
-from voitta_ask.engines import FakeSTT, FakeTTS
+from voitta_speech.engines import FakeSTT, FakeTTS
 from voitta_ask.endpoint import Endpointer
 from voitta_ask.service import AskConfig, AskService, build_app
 from voitta_gateway.audio import silence, tone

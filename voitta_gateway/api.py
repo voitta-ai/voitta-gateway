@@ -131,6 +131,12 @@ def build_api(gw: Gateway) -> FastAPI:
         await gw.typing(cid, bool(data.get("on", True)))
         return {"ok": True}
 
+    @app.get("/v1/conversations/{cid}/history")
+    async def history(cid: str, thread: str | None = None, limit: int = 25,
+                      p: Principal = Depends(need("events:read"))):
+        """Recent messages of a conversation, or of the thread a message belongs to (Slack)."""
+        return {"conversation_id": cid, "messages": await gw.history(cid, thread, limit)}
+
     # ------------------------------------------------------------ attachments
     @app.post("/v1/attachments")
     async def upload(request: Request, p: Principal = Depends(need("messages:send")),

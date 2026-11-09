@@ -229,7 +229,8 @@ class CallManager:
         to = body.get("to")
         if isinstance(to, dict) and "person_id" in to:
             addrs = self.gw.identity.addresses(to["person_id"])
-            via = via or next((ch for ch in ("phone", "signal") if ch in self.gw.voice and addrs.get(ch)), None)
+            via = via or next((ch for ch in ("phone", "signal", "slack") if ch in self.gw.voice and addrs.get(ch)),
+                              None)
             if not via or not addrs.get(via):
                 raise ApiError(422, "no_route", f"no voice channel for {to['person_id']}")
             address = addrs[via][0]
@@ -244,7 +245,7 @@ class CallManager:
             raise ApiError(422, "unsupported", f"{via} cannot place calls")
         if via == "phone" and self.gw.emergency(address):
             raise ApiError(403, "emergency_number_blocked", "outbound calls to emergency numbers are blocked")
-        if self.gw.opted_out(via, address):
+        if self.gw.opted_out(via, address.split("/")[-1] if via == "slack" else address):
             raise ApiError(409, "opted_out", "recipient opted out")
         route_name = body.get("route") or getattr(adapter, "route", None)
         route, secret = self._route(route_name)

@@ -11,7 +11,7 @@ from openapi_spec_validator import validate
 from openapi_spec_validator.readers import read_from_filename
 
 from voitta_ask.service import AskConfig, AskService, build_app
-from voitta_ask.engines import FakeSTT, FakeTTS
+from voitta_speech.engines import FakeSTT, FakeTTS
 from voitta_gateway.api import build_api
 from voitta_gateway.config import Config
 from voitta_gateway.core import Gateway

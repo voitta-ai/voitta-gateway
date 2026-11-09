@@ -18,7 +18,13 @@ adapters:
   slack:
     bot_token_secret: SLACK_BOT_TOKEN
     app_token_secret: SLACK_APP_TOKEN   # Socket Mode
-    channels: mention
+    channels: mention                   # DMs, mentions and @here always count
+    bots: mention                       # other apps' posts only when they mention us
+    calls:                              # outbound voice calls through a browser join page
+      public_base_url: https://gw.example.com   # the ingress, reachable by callees' browsers (https)
+      route: main
+      ring_timeout_s: 60
+      card: button                      # or calls_api (Slack's native call card, with fallback)
 
   # phone:
   #   provider: telnyx
@@ -38,6 +44,10 @@ routes:
     connect_timeout_s: 3
     grace_s: 5
     fallback: reject                         # reject | hangup | transfer:+15551234567
+
+speech:                                 # transcribe inbound voice clips (voitta-ask serves /v1/speech/*)
+  url: http://127.0.0.1:8791
+  token_secret: TOKEN_SPEECH
 
 consumers:
   agent-core:

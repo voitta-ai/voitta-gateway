@@ -34,7 +34,7 @@ from voitta_gateway.media import verify
 from voitta_gateway.store import new_id
 
 from .endpoint import Endpointer
-from .engines import RATE, STT, TTS, build_stt, build_tts
+from voitta_speech.engines import RATE, STT, TTS, build_stt, build_tts
 
 log = logging.getLogger(__name__)
 FINAL = {"done", "no_answer", "failed"}
@@ -430,4 +430,7 @@ def build_app(svc: AskService) -> FastAPI:
     async def media(ws: WebSocket):
         await svc.media(ws)
 
+    # The speech API shares this process's models (loaded once) and its client tokens.
+    from voitta_speech.api import mount as mount_speech
+    mount_speech(app, svc.tts, svc.stt, client, error_cls=ApiError)
     return app

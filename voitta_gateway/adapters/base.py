@@ -57,6 +57,10 @@ class MessagingAdapter:
     async def typing(self, key: dict, on: bool) -> None:
         raise Unsupported("typing")
 
+    async def history(self, key: dict, thread_platform_id: str | None, limit: int) -> list[dict]:
+        """Newest-last list of {platform_id, sender: {id, kind, name?}, parts, time, thread}."""
+        raise Unsupported("history")
+
     def direct_key(self, address: str) -> dict:
         """Conversation key for a 1:1 conversation with `address` (agent-initiated sends)."""
         raise Unsupported("starting conversations")

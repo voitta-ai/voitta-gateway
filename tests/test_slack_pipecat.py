@@ -151,6 +151,7 @@ async def test_slack_messages(gateway, fake_slack):
 
 async def test_pipecat_bot_echoes_a_signal_call(gateway):
     """examples/pipecat_bot.py (echo mode) as the agent: serializer + Pipecat transport end to end."""
+    pytest.importorskip("pipecat", reason="needs the pipecat extra")
     spec = importlib.util.spec_from_file_location("pipecat_bot", Path(__file__).parent.parent / "examples/pipecat_bot.py")
     bot = importlib.util.module_from_spec(spec)
     sys.modules["pipecat_bot"] = bot

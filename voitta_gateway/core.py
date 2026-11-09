@@ -13,6 +13,8 @@ import logging
 import re
 import time
 
+import httpx
+
 from .adapters.base import CallAdapter, Inbound, MessagingAdapter, Unsupported
 from .config import Config
 from .events import EventLog, ms_to_iso
@@ -81,6 +83,7 @@ class Gateway:
         self.channel_up: dict[str, bool] = {}
         self.outbox = None        # set by app wiring (outbox.Outbox)
         self.calls = None         # set by app wiring (calls.CallManager)
+        self._speech_http: httpx.AsyncClient | None = None
 
     def source(self, channel: str) -> str:
         return f"/gateway/{channel}"
@@ -116,10 +119,42 @@ class Gateway:
         row = self.store.message_by_platform(cid, platform_id)
         return row["id"] if row else None
 
-    def inbound_message(self, m: Inbound) -> dict | None:
+    # ================================================================ voice clips
+    async def _transcribe(self, parts: list[dict]) -> None:
+        """Add `transcript` to audio file parts through the voitta-speech API, if configured.
+        Parts that already carry a transcript (Slack's own) are left alone."""
+        sp = self.cfg.speech
+        if not sp:
+            return
+        for p in parts:
+            if (p.get("type") != "file" or not p.get("attachment_id") or p.get("transcript")
+                    or not str(p.get("content_type") or "").startswith("audio/")):
+                continue
+            row = self.store.file(p["attachment_id"])
+            if not row:
+                continue
+            if self._speech_http is None:
+                self._speech_http = httpx.AsyncClient(base_url=sp.url, timeout=sp.timeout_s, headers={
+                    "Authorization": f"Bearer {self.cfg.secret(sp.token_secret)}"})
+            try:
+                with open(row["path"], "rb") as f:
+                    data = f.read()
+                params = {"language": sp.language} if sp.language else {}
+                r = await self._speech_http.post("/v1/speech/transcribe", content=data, params=params,
+                                                 headers={"Content-Type": p["content_type"]})
+                r.raise_for_status()
+                out = r.json()
+                p.update(transcript=out.get("text", ""), transcript_source="voitta-speech",
+                         duration_s=out.get("duration_s"))
+            except Exception as e:
+                log.warning("transcribing %s failed: %s", p["attachment_id"], e)
+                p["transcript_error"] = str(e)[:300]
+
+    async def inbound_message(self, m: Inbound) -> dict | None:
         cid = self.store.conversation(m.channel, m.conversation_key, m.kind)
         if self.store.message_by_platform(cid, m.platform_id):
             return None                                           # platform redelivery
+        m.sender.setdefault("kind", "human")
         person = self.identity.lookup(m.channel, m.sender.get("id"), m.sender.get("number"))
         text = " ".join(p.get("text", "") for p in m.parts if p.get("type") == "text").strip()
 
@@ -160,8 +195,25 @@ class Gateway:
                                       {"held_id": hid, "channel": m.channel, "conversation_id": cid,
                                        "sender": {"id": m.sender["id"]}},
                                       subject=cid, time=ms_to_iso(m.time_ms))
+        await self._transcribe(data["parts"])                     # only for senders we let through
         return self.events.append("message.received", self.source(m.channel), data,
                                   subject=cid, time=ms_to_iso(m.time_ms))
+
+    def inbound_interaction(self, channel: str, key: dict, kind: str, sender_id: str,
+                            target_platform: str | None, action: dict, time_ms: int) -> None:
+        """A button or menu in one of our messages was used (Slack block_actions)."""
+        k = self._known(channel, key, kind, sender_id)
+        if not k:
+            return
+        cid, person = k
+        row = self.store.message_by_platform(cid, target_platform) if target_platform else None
+        self.events.append("interaction.received", self.source(channel),
+                           {"conversation_id": cid, "message_id": row["id"] if row else None,
+                            "platform_id": target_platform, "person_id": person,
+                            "sender": {"id": sender_id, "kind": "human"},
+                            "action_id": action.get("action_id"), "block_id": action.get("block_id"),
+                            "action_type": action.get("type"), "value": action.get("value")},
+                           subject=cid, time=ms_to_iso(time_ms))
 
     def _known(self, channel: str, key: dict, kind: str, sender_id: str) -> tuple[str, str | None] | None:
         """Conversation id and person for follow-up events, or None if the sender is not let through."""
@@ -282,6 +334,42 @@ class Gateway:
     def _peer(self, key: dict) -> str | None:
         return key.get("peer") or key.get("user")
 
+    def _check_parts(self, channel: str, adapter: MessagingAdapter, parts: list[dict]) -> None:
+        if not parts:
+            raise ApiError(422, "empty", "parts is empty")
+        for p in parts:
+            if p.get("type") == "file" and not self.store.file(p.get("attachment_id") or ""):
+                raise ApiError(422, "unknown_attachment", str(p.get("attachment_id")))
+            if p.get("type") == "blocks":
+                if not adapter.capabilities.get("blocks"):
+                    raise ApiError(422, "unsupported", f"{channel} does not support blocks")
+                if not isinstance(p.get("blocks"), list) or not p["blocks"]:
+                    raise ApiError(422, "bad_blocks", "a blocks part needs a non-empty blocks list")
+
+    async def history(self, cid: str, thread: str | None, limit: int) -> list[dict]:
+        """Recent messages of a conversation (or one thread), straight from the platform."""
+        row = self.store.conversation_row(cid)
+        if not row:
+            raise ApiError(404, "unknown_conversation", cid)
+        adapter = self.adapter(row["channel"])
+        if not adapter.capabilities.get("history"):
+            raise ApiError(422, "unsupported", f"{row['channel']} has no message history")
+        thread_pid = None
+        if thread:
+            m = self.store.message(thread)
+            if not m or m["conversation_id"] != cid:
+                raise ApiError(422, "bad_thread", "thread must be a message in this conversation")
+            thread_pid = m["thread_platform_id"] or m["platform_id"]
+        try:
+            items = await adapter.history(json.loads(row["platform_key"]), thread_pid, limit)
+        except Unsupported as e:
+            raise ApiError(422, "unsupported", str(e))
+        for it in items:
+            known = self.store.message_by_platform(cid, it["platform_id"])
+            it["message_id"] = known["id"] if known else None
+            it["person_id"] = self.identity.lookup(row["channel"], it["sender"].get("id"))
+        return items
+
     def send_message(self, consumer: str, body: dict) -> dict:
         channel, cid, key = self.resolve_target(body["to"])
         adapter = self.adapter(channel)
@@ -296,11 +384,7 @@ class Gateway:
             reply = {"platform_id": r["platform_id"], "thread": r["thread_platform_id"],
                      "direction": r["direction"]}
         parts = body.get("parts") or []
-        for p in parts:
-            if p.get("type") == "file" and not self.store.file(p.get("attachment_id", "")):
-                raise ApiError(422, "unknown_attachment", str(p.get("attachment_id")))
-        if not parts:
-            raise ApiError(422, "empty", "parts is empty")
+        self._check_parts(channel, adapter, parts)
         mid = self.store.add_message(cid, "out", None, "queued")
         self.outbox.enqueue(mid, channel, cid, "send", {"key": key, "parts": parts, "reply_to": reply})
         self.events.append("message.status", self.source(channel),
@@ -320,6 +404,8 @@ class Gateway:
             raise ApiError(422, "not_ours", "only the gateway's own messages can be edited or deleted")
         if not row["platform_id"]:
             raise ApiError(409, "not_sent_yet", "message has no platform id yet")
+        if op == "edit":
+            self._check_parts(conv["channel"], adapter, payload.get("parts") or [])
         payload = {**payload, "key": json.loads(conv["platform_key"]),
                    "target": {"platform_id": row["platform_id"], "direction": row["direction"]}}
         opid = new_id("op")

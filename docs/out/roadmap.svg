@@ -23,16 +23,16 @@
   <text x="596.6" y="136" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PARTIAL</text>
   <text x="506" y="168" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• OpenAPI + AsyncAPI v1: done</text>
   <text x="506" y="192" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• checked in every test: done</text>
-  <text x="506" y="216" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• CallSession: 1 of 2 paths live</text>
-  <text x="506" y="240" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• client library: open</text>
+  <text x="506" y="216" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• calls: Signal live, others tested</text>
+  <text x="506" y="240" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• manhattan-logic: not yet</text>
   <polygon points="711,40 907,40 925,75 907,110 711,110 729,75" fill="#eaf1fe" stroke="#1d4ed8" stroke-width="1.6"/>
-  <text x="822.0" y="80" font-family="Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" text-anchor="middle" fill="#1d4ed8">3 · Messaging adapters</text>
-  <rect x="795.2" y="124" width="56.8" height="16" rx="8" fill="#b45309"/>
-  <text x="823.6" y="136" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PARTIAL</text>
-  <text x="733" y="168" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• Signal + Slack adapters built</text>
-  <text x="733" y="192" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• tested with simulators</text>
-  <text x="733" y="216" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• manhattan-logic not switched</text>
-  <text x="733" y="240" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• voice: 212 number only</text>
+  <text x="822.0" y="80" font-family="Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" text-anchor="middle" fill="#1d4ed8">3 · Slack</text>
+  <rect x="801.6" y="124" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="826.8" y="136" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <text x="733" y="168" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• messaging hardened (shmobster)</text>
+  <text x="733" y="192" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• voice clips -&gt; transcripts</text>
+  <text x="733" y="216" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• calls via browser join page</text>
+  <text x="733" y="240" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="normal" text-anchor="start" fill="#27272a">• live: needs the Slack app</text>
   <polygon points="938,40 1134,40 1152,75 1134,110 938,110 956,75" fill="#fafafa" stroke="#a1a1aa" stroke-width="1.6"/>
   <text x="1049.0" y="80" font-family="Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" text-anchor="middle" fill="#a1a1aa">4 · More channels</text>
   <rect x="1022.2" y="124" width="56.8" height="16" rx="8" fill="#9ca3af"/>

@@ -194,7 +194,7 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
     async def start(self, gw) -> None:
         self.gw = gw
         gw.channel_state(self.name, False, "connecting to signal-cli")
-        self._replay_raw()
+        await self._replay_raw()
         if self.cfg.spawn:
             await self._spawn()
         self.task = asyncio.create_task(self._connection_loop(), name="signal-connection")
@@ -268,16 +268,16 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
         if method == "receive":
             rid = self.gw.store.x("INSERT INTO raw_inbound (channel, body) VALUES (?,?)",
                                   self.name, json.dumps(result)).lastrowid
-            self._process(result)
+            await self._process(result)
             self.gw.store.x("UPDATE raw_inbound SET processed=1 WHERE id=?", rid)
         elif method == "callEvent":
             await self._call_event(result)
 
-    def _replay_raw(self) -> None:
+    async def _replay_raw(self) -> None:
         for row in self.gw.store.q("SELECT * FROM raw_inbound WHERE channel=? AND processed=0 ORDER BY id",
                                    self.name):
             try:
-                self._process(json.loads(row["body"]))
+                await self._process(json.loads(row["body"]))
             except Exception:
                 log.exception("replaying raw inbound %s failed", row["id"])
             self.gw.store.x("UPDATE raw_inbound SET processed=1 WHERE id=?", row["id"])
@@ -321,14 +321,14 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
         q = dm.get("quote") or {}
         return self._author(q.get("authorUuid"), q.get("authorNumber")) == self.me and bool(q)
 
-    def _process(self, result: dict) -> None:
+    async def _process(self, result: dict) -> None:
         env = result.get("envelope") or {}
         if not env:
             return
         sender_id = env.get("sourceUuid") or env.get("sourceNumber")
         if not sender_id or self._author(env.get("sourceUuid"), env.get("sourceNumber")) == self.me:
             return                                            # our own (sync) messages
-        sender = {"id": sender_id, "number": env.get("sourceNumber"), "name": env.get("sourceName")}
+        sender = {"id": sender_id, "kind": "human", "number": env.get("sourceNumber"), "name": env.get("sourceName")}
         ts = env.get("timestamp") or 0
 
         if rm := env.get("receiptMessage"):
@@ -364,7 +364,7 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             return
         q = dm.get("quote") or {}
         reply = f"{self._author(q.get('authorUuid'), q.get('authorNumber'))}:{q.get('id')}" if q else None
-        self.gw.inbound_message(Inbound(
+        await self.gw.inbound_message(Inbound(
             channel=self.name, conversation_key=key, kind=kind, sender=sender,
             platform_id=f"{sender_id}:{dm.get('timestamp') or ts}", time_ms=ts, parts=parts,
             reply_to_platform=reply, addressed=self._addressed(dm, kind)))

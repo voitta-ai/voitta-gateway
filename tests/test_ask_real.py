@@ -9,7 +9,7 @@ import os
 import numpy as np
 import pytest
 
-from voitta_ask.engines import PiperTTS, WhisperSTT
+from voitta_speech.engines import PiperTTS, WhisperSTT
 from voitta_ask.service import load
 from voitta_gateway.audio import Resampler, silence
 

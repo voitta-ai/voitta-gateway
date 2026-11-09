@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="882" viewBox="0 0 1240 882">
+  <title>Slack call</title>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <polyline points="110.0,94 110.0,858" fill="none" stroke="#a1a1aa" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <polyline points="450.0,94 450.0,858" fill="none" stroke="#a1a1aa" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <polyline points="790.0,94 790.0,858" fill="none" stroke="#a1a1aa" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <polyline points="1130.0,94 1130.0,858" fill="none" stroke="#a1a1aa" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <rect x="1169.6" y="6" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="1194.8" y="18" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <text x="1148" y="18" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="end" fill="#52525b" font-style="italic">simulated Slack; join page in headless Chrome; not yet live</text>
+  <polyline points="110.0,124 450.0,124" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="450.0,124 441.8,127.7 441.8,120.3" fill="#3f3f46"/>
+  <rect x="134.3" y="106.5" width="291.4" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="280.0" y="117" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">POST /v1/calls {to: U..., via: slack, route}</text>
+  <polyline points="450.0,162 110.0,162" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="110.0,162 118.2,158.3 118.2,165.7" fill="#047857"/>
+  <rect x="176.2" y="144.5" width="207.6" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="280.0" y="155" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">WS connect (signed) · connected</text>
+  <polyline points="450.0,200 790.0,200" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="790.0,200 781.8,203.7 781.8,196.3" fill="#3f3f46"/>
+  <rect x="419.6" y="182.5" width="400.8" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="620.0" y="193" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">conversations.open · chat.postMessage (card with Join button)</text>
+  <polyline points="790.0,238 1130.0,238" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="1130.0,238 1121.8,241.7 1121.8,234.3" fill="#3f3f46"/>
+  <rect x="807.9" y="220.5" width="304.2" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="960.0" y="231" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">DM notification · click Join -&gt; opens the page</text>
+  <polyline points="450.0,276 110.0,276" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="6 4"/>
+  <polygon points="110.0,276 118.2,272.3 118.2,279.7" fill="#3f3f46"/>
+  <rect x="118.2" y="258.5" width="323.6" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="280.0" y="269" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">event call.ringing  (ring timeout 60 s -&gt; missed)</text>
+  <polyline points="1130.0,314 450.0,314" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="450.0,314 458.2,310.3 458.2,317.7" fill="#3f3f46"/>
+  <rect x="634.7" y="296.5" width="310.7" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="790.0" y="307" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">GET /slack/call/{id}?t=&lt;per-call token&gt;  (HTML)</text>
+  <rect x="681.7328" y="334" width="556.5344000000001" height="30" rx="6" fill="#ffffff" stroke="#71717a" stroke-width="1"/>
+  <text x="960.0" y="353" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="bold" text-anchor="middle" fill="#71717a">page: click Join -&gt; microphone permission · AudioWorklet capture + player</text>
+  <polyline points="1130.0,396 450.0,396" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="450.0,396 458.2,392.3 458.2,399.7" fill="#3f3f46"/>
+  <rect x="634.7" y="378.5" width="310.7" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="790.0" y="389" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">WS /slack/call/{id}/audio · hello {rate: 48000}</text>
+  <polyline points="450.0,434 790.0,434" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="6 4"/>
+  <polygon points="790.0,434 781.8,437.7 781.8,430.3" fill="#3f3f46"/>
+  <rect x="513.0" y="416.5" width="214.1" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="620.0" y="427" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">chat.update: card -&gt; &quot;On a call&quot;</text>
+  <polyline points="450.0,472 110.0,472" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="110.0,472 118.2,468.3 118.2,475.7" fill="#3f3f46"/>
+  <rect x="127.9" y="454.5" width="304.2" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="280.0" y="465" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">start {pcm16le, 16 kHz}  · event call.answered</text>
+  <polyline points="1130.0,510 450.0,510" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="450.0,510 458.2,506.3 458.2,513.7" fill="#047857"/>
+  <rect x="683.0" y="492.5" width="214.1" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="790.0" y="503" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">mic: pcm16 48 kHz, binary, 20 ms</text>
+  <polyline points="450.0,548 110.0,548" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="110.0,548 118.2,544.3 118.2,551.7" fill="#047857"/>
+  <rect x="214.8" y="530.5" width="130.4" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="280.0" y="541" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">media frames 16 kHz</text>
+  <polyline points="110.0,586 450.0,586" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="450.0,586 441.8,589.7 441.8,582.3" fill="#047857"/>
+  <rect x="211.6" y="568.5" width="136.8" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="280.0" y="579" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">media · mark · clear</text>
+  <polyline points="450.0,624 1130.0,624" fill="none" stroke="#047857" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="1130.0,624 1121.8,627.7 1121.8,620.3" fill="#047857"/>
+  <rect x="666.9" y="606.5" width="246.3" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="790.0" y="617" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">pcm16 48 kHz (paced) · {event: clear}</text>
+  <rect x="355.0" y="644" width="870.0" height="30" rx="6" fill="#fdf2f8" stroke="#be185d" stroke-width="1"/>
+  <text x="790.0" y="663" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="bold" text-anchor="middle" fill="#be185d">page reload: same call resumes (10 s grace) · tab closed: remote_hangup</text>
+  <polyline points="110.0,706 450.0,706" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="450.0,706 441.8,709.7 441.8,702.3" fill="#3f3f46"/>
+  <rect x="256.7" y="688.5" width="46.6" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="280.0" y="699" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">hangup</text>
+  <polyline points="450.0,744 1130.0,744" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="1130.0,744 1121.8,747.7 1121.8,740.3" fill="#3f3f46"/>
+  <rect x="715.2" y="726.5" width="149.7" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="790.0" y="737" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">{event: ended} · close</text>
+  <polyline points="450.0,782 790.0,782" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="6 4"/>
+  <polygon points="790.0,782 781.8,785.7 781.8,778.3" fill="#3f3f46"/>
+  <rect x="487.2" y="764.5" width="265.6" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="620.0" y="775" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">chat.update: card -&gt; &quot;Call ended · 0:27&quot;</text>
+  <polyline points="450.0,820 110.0,820" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="6 4"/>
+  <polygon points="110.0,820 118.2,816.3 118.2,823.7" fill="#3f3f46"/>
+  <rect x="201.9" y="802.5" width="156.1" height="16.5" fill="#ffffff" fill-opacity="0.92"/>
+  <text x="280.0" y="813" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#18181b">stop · event call.ended</text>
+  <rect x="5.0" y="40" width="210" height="54" rx="8" fill="#f3ecfe" stroke="#6d28d9" stroke-width="1.5"/>
+  <text x="110.0" y="64.0" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#6d28d9">Agent</text>
+  <text x="110.0" y="80.0" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">voitta-ask · Pipecat</text>
+  <rect x="345.0" y="40" width="210" height="54" rx="8" fill="#fdf2f8" stroke="#be185d" stroke-width="1.5"/>
+  <text x="450.0" y="64.0" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#be185d">voitta-gateway</text>
+  <text x="450.0" y="80.0" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">API · Slack adapter · ingress</text>
+  <rect x="685.0" y="40" width="210" height="54" rx="8" fill="#ffffff" stroke="#27272a" stroke-width="1.5"/>
+  <text x="790.0" y="64.0" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#18181b">Slack</text>
+  <text x="790.0" y="80.0" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">Web API</text>
+  <rect x="1025.0" y="40" width="210" height="54" rx="8" fill="#ffffff" stroke="#27272a" stroke-width="1.5"/>
+  <text x="1130.0" y="64.0" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#18181b">Callee&#x27;s browser</text>
+  <text x="1130.0" y="80.0" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" text-anchor="middle" fill="#52525b">join page</text>
+</svg>
