@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS messages (
     thread_platform_id TEXT,
     status TEXT NOT NULL,
     error TEXT,
-    created REAL NOT NULL
+    created REAL NOT NULL,
+    consumer TEXT                    -- who sent it (outbound only)
 );
 CREATE INDEX IF NOT EXISTS messages_platform ON messages (conversation_id, platform_id);
 CREATE INDEX IF NOT EXISTS messages_platform_only ON messages (platform_id);
@@ -127,6 +128,8 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.executescript(SCHEMA)
+        if "consumer" not in {r["name"] for r in self.q("PRAGMA table_info(messages)")}:
+            self.x("ALTER TABLE messages ADD COLUMN consumer TEXT")      # databases from before #1 item 3
         self.files = path.parent / "files"
         self.files.mkdir(parents=True, exist_ok=True)
 
@@ -161,11 +164,12 @@ class Store:
 
     # ---------------- messages ----------------
     def add_message(self, conversation_id: str, direction: str, platform_id: str | None,
-                    status: str, thread: str | None = None, mid: str | None = None) -> str:
+                    status: str, thread: str | None = None, mid: str | None = None,
+                    consumer: str | None = None) -> str:
         mid = mid or new_id("msg")
         self.x("INSERT INTO messages (id, conversation_id, direction, platform_id, thread_platform_id,"
-               " status, created) VALUES (?,?,?,?,?,?,?)",
-               mid, conversation_id, direction, platform_id, thread, status, time.time())
+               " status, created, consumer) VALUES (?,?,?,?,?,?,?,?)",
+               mid, conversation_id, direction, platform_id, thread, status, time.time(), consumer)
         return mid
 
     def message(self, mid: str) -> sqlite3.Row | None:

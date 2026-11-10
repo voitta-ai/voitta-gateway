@@ -72,7 +72,10 @@ paths:
         Replies go back to the conversation they answer: `to: {conversation_id}`. A `person_id`
         target is for conversations the agent starts itself; the gateway then picks a channel.
         Derive `idempotency_key` from the event being answered (e.g. `reply:evt_42`).
-        Outcome: `message.status` events (queued -> sent -> delivered -> read, or failed).
+        Outcome: `message.status` events (queued -> sent -> delivered -> read, or failed), addressed
+        to the sending consumer. `to: {conversation: <label>}` posts into a mapped group that has had
+        no inbound traffic. With a conversations map, a group send outside the consumer's map entries
+        is 403 (`not_listed`, `forbidden_conversation`).
       x-scope: messages:send
       requestBody:
         required: true
@@ -694,6 +697,10 @@ components:
           required: [conversation_id]
           properties:
             conversation_id: {type: string, pattern: "^conv_"}
+        - type: object
+          required: [conversation]
+          properties:
+            conversation: {type: string, description: "label of a group in gateway.yaml conversations"}
         - type: object
           required: [person_id]
           properties:

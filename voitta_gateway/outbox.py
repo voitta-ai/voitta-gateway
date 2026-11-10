@@ -65,12 +65,14 @@ class Outbox:
         store, events = self.gw.store, self.gw.events
         op, payload, oid, cid = row["op"], json.loads(row["payload"]), row["message_id"], row["conversation_id"]
         src = self.gw.source(adapter.name)
+        sent = store.message(oid) if op == "send" else None
+        who = {"addressed_to": sent["consumer"] if sent else payload.get("consumer")}   # the sender only
         try:
             if op == "send":
                 pid, thread = await adapter.send(payload["key"], payload["parts"], payload.get("reply_to"))
                 store.set_message(oid, platform_id=pid, thread_platform_id=thread, status="sent")
                 events.append("message.status", src, {"conversation_id": cid, "message_id": oid,
-                                                      "status": "sent"}, subject=cid)
+                                                      "status": "sent", **who}, subject=cid)
             elif op == "edit":
                 await adapter.edit(payload["key"], payload["target"]["platform_id"], payload["parts"])
             elif op == "delete":
@@ -80,8 +82,8 @@ class Outbox:
                                     payload.get("remove", False))
             store.x("UPDATE outbox SET done=1 WHERE message_id=?", oid)
             if op != "send":
-                events.append("operation.done", src, {"op_id": oid, "op": op, "conversation_id": cid},
-                              subject=cid)
+                events.append("operation.done", src, {"op_id": oid, "op": op, "conversation_id": cid,
+                                                       **who}, subject=cid)
         except Exception as e:
             attempts = row["attempts"] + 1
             permanent = isinstance(e, PermanentError) or attempts >= self.gw.cfg.max_send_attempts
@@ -91,11 +93,11 @@ class Outbox:
                 if op == "send":
                     store.set_message(oid, status="failed", error=str(e)[:500])
                     events.append("message.status", src, {"conversation_id": cid, "message_id": oid,
-                                                          "status": "failed", "error": str(e)[:500]},
+                                                          "status": "failed", "error": str(e)[:500], **who},
                                   subject=cid)
                 else:
                     events.append("operation.failed", src, {"op_id": oid, "op": op, "conversation_id": cid,
-                                                            "error": str(e)[:500]}, subject=cid)
+                                                            "error": str(e)[:500], **who}, subject=cid)
             else:
                 backoff = min(60, 2 ** attempts)
                 store.x("UPDATE outbox SET attempts=?, next_at=? WHERE message_id=?",

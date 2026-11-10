@@ -260,7 +260,18 @@ components:
                 reply_to: {type: [string, "null"], description: "message_id this one quotes / answers"}
                 thread: {type: [string, "null"], description: "platform thread id (Slack)"}
                 addressed: {type: boolean, description: "DM, or the agent was mentioned"}
+                addressed_to: {$ref: "#/components/schemas/AddressedTo"}
+                conversation: {type: string, description: "label in gateway.yaml conversations (mapped groups only)"}
                 slack_channel: {type: string}
+
+    AddressedTo:
+      type: [string, "null"]
+      description: |
+        The consumer this event is for; only that consumer's stream carries it. null = every consumer;
+        "" = none but admin tokens (a group missing from a non-empty conversations map).
+        Inbound: the consumer that sent the quoted / reacted-to message, else one whose name keyword
+        is in the text, else the conversation's default. message.status and operation.*: the sender.
+        Also set on interaction, edit, delete and reaction events.
 
     MessageHeldEvent:
       allOf:
@@ -276,6 +287,7 @@ components:
                 held_id: {type: string, pattern: "^held_"}
                 channel: {$ref: "#/components/schemas/ChannelName"}
                 conversation_id: {type: string}
+                addressed_to: {$ref: "#/components/schemas/AddressedTo"}
                 sender:
                   type: object
                   required: [id]
@@ -296,6 +308,7 @@ components:
                 message_id: {type: string, pattern: "^msg_"}
                 status: {type: string, enum: [queued, sent, delivered, read, failed]}
                 error: {type: string}
+                addressed_to: {$ref: "#/components/schemas/AddressedTo"}
 
     MessageEditedEvent:
       allOf:

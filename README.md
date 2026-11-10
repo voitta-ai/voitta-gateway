@@ -96,6 +96,10 @@ GET  /v1/held · POST /v1/held/{id}/approve|discard · GET/DELETE /v1/optouts   
   Types: `message.received|status|edited|deleted|held`, `reaction.added|removed`,
   `contact.opted_out|opted_in`, `call.ringing|answered|dtmf|state|transferred|ended`,
   `channel.up|down`, `operation.done|failed`.
+- **Read the event stream after every send.** `202 queued` means accepted, not sent: the outcome
+  arrives later as `message.status` (`sent`, or `failed` with an error). A consumer that runs and
+  exits finds its own failures on its next poll, so it persists `next` on every 200, even when
+  `events` is empty (on a shared account most events belong to other consumers).
 - **Policy lives here**: unknown senders are held (no content in the event) until approved;
   `STOP` opts out; calls to emergency numbers are refused.
 - **Closed by default**: `policy.inbound_allowlist` is empty, so every sender is held until
@@ -111,6 +115,37 @@ gating happens at read time because Signal offers none earlier: anyone
   phone numbers, person addresses, conversation keys) are stripped of invisible Unicode
   format characters when loaded; a pasted number carrying U+202C otherwise makes
   signal-cli report "not registered", and re-registering is the wrong fix.
+
+## Several agents on one account
+
+One Signal account (or Slack app) can serve several consumers. `conversations:` maps each group
+to the consumers that serve it, default first; its label is also the alias they send to, so group
+ids stay in gateway.yaml. DMs go to the adapter's `direct_consumer`.
+
+```yaml
+consumers:
+  shmobster: {token_secret: TOKEN_SHMOBSTER, scopes: [events:read, messages:send], names: [ada], label: Ada}
+  leads:     {token_secret: TOKEN_LEADS,     scopes: [events:read, messages:send], names: [leadbot]}
+conversations:
+  team: {channel: signal, key: "<group-id>", consumers: [leads, shmobster]}
+adapters:
+  signal: {account: "+15550001111", direct_consumer: shmobster}
+```
+
+- **Who gets an inbound event** (`addressed_to`): the consumer that sent the message it quotes,
+  reacts to or edits; else the consumer whose name keyword is in the text (whole word, `@`
+  optional); else the conversation's default. Only that consumer's stream carries it; admin tokens
+  see everything. `message.status` and `operation.*` go to the consumer that sent the message.
+- **Where a consumer may act**: sends, reactions, typing and history need a conversation the
+  consumer serves; edits and deletes, also that it sent the message. Admin tokens are exempt.
+- **`label`** is prefixed to the consumer's text (`Ada: ...`), so people can tell agents apart.
+- **DMs** go to the consumer that last sent into that conversation, else `direct_consumer`. Any
+  consumer may start a DM that has no messages yet; only the consumers serving a DM act in it.
+- **Calls** are routed by `routes:`, not by this map: give message consumers `events` patterns
+  without `call.*`.
+- A listed group whose entry names no `consumers`, and DMs with no `direct_consumer` set, reach
+  every consumer as before. `message.status` and `operation.*` always go only to the consumer that
+  sent the message.
 
 ## Media protocol `voitta-media/1`
 

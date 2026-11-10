@@ -113,29 +113,29 @@ def build_api(gw: Gateway) -> FastAPI:
 
     @app.post("/v1/messages/{mid}/edit")
     async def edit(mid: str, data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
-        return idempotent(p, data, lambda: gw.message_op(mid, "edit", {"parts": data.get("parts") or []}))
+        return idempotent(p, data, lambda: gw.message_op(mid, "edit", {"parts": data.get("parts") or []}, p.name))
 
     @app.post("/v1/messages/{mid}/delete")
     async def delete(mid: str, data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
-        return idempotent(p, data, lambda: gw.message_op(mid, "delete", {}))
+        return idempotent(p, data, lambda: gw.message_op(mid, "delete", {}, p.name))
 
     @app.post("/v1/messages/{mid}/reactions")
     async def react(mid: str, data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
         if not data.get("emoji"):
             raise ApiError(422, "bad_emoji", "emoji is required")
         return idempotent(p, data, lambda: gw.message_op(
-            mid, "react", {"emoji": data["emoji"], "remove": bool(data.get("remove"))}))
+            mid, "react", {"emoji": data["emoji"], "remove": bool(data.get("remove"))}, p.name))
 
     @app.post("/v1/conversations/{cid}/typing")
     async def typing(cid: str, data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
-        await gw.typing(cid, bool(data.get("on", True)))
+        await gw.typing(cid, bool(data.get("on", True)), p.name)
         return {"ok": True}
 
     @app.get("/v1/conversations/{cid}/history")
     async def history(cid: str, thread: str | None = None, limit: int = 25,
                       p: Principal = Depends(need("events:read"))):
         """Recent messages of a conversation, or of the thread a message belongs to (Slack)."""
-        return {"conversation_id": cid, "messages": await gw.history(cid, thread, limit)}
+        return {"conversation_id": cid, "messages": await gw.history(cid, thread, limit, p.name)}
 
     # ------------------------------------------------------------ attachments
     @app.post("/v1/attachments")
@@ -157,8 +157,11 @@ def build_api(gw: Gateway) -> FastAPI:
 
     # ------------------------------------------------------------ events
     def _filter(p: Principal, types: str | None, events: list[dict]) -> list[dict]:
+        """A consumer's events: its type patterns, and on a shared account only what is addressed to it
+        (#1 item 3). `addressed_to` absent or null means every consumer; admin tokens see everything."""
         wanted = [t.strip() for t in types.split(",")] if types else None
-        return [e for e in events if matches(e["type"], p.events) and (not wanted or matches(e["type"], wanted))]
+        return [e for e in events if matches(e["type"], p.events) and (not wanted or matches(e["type"], wanted))
+                and (e["data"].get("addressed_to") in (None, p.name) or "admin" in p.scopes)]
 
     @app.get("/v1/events/poll")
     async def poll(request: Request, after: str | None = None, types: str | None = None, limit: int = 200,
