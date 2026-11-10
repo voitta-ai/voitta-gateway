@@ -571,7 +571,8 @@ class Gateway:
     def _recorded_history(self, conv, limit: int) -> list[dict]:
         """History the gateway kept itself, for platforms without a history API (Signal): what it
         received from senders it let through and what it sent, since it started recording."""
-        me = self.adapter(conv["channel"]).account
+        adapter = self.adapter(conv["channel"])
+        me = getattr(adapter, "me", adapter.account)                # the ACI, as in events and platform ids
         rows = self.store.q("SELECT * FROM messages WHERE conversation_id=? AND parts IS NOT NULL"
                             " AND (direction='in' OR platform_id IS NOT NULL)"           # ours, once sent
                             " ORDER BY created DESC LIMIT ?", conv["id"], max(1, min(int(limit), 200)))
@@ -605,6 +606,12 @@ class Gateway:
         for p in texts:
             if not isinstance(p.get("text"), str):
                 raise ApiError(422, "bad_text", "a text part needs a string text")
+            try:
+                p["text"].encode("utf-16-le")
+            except UnicodeEncodeError:
+                raise ApiError(422, "bad_text", "text holds an unpaired surrogate (a broken character)")
+            if p.get("styles") and not adapter.capabilities.get("styles"):
+                raise ApiError(422, "unsupported", f"{adapter.name} does not support styles")
             if not isinstance(p.get("styles") or [], list):
                 raise ApiError(422, "bad_styles", "styles must be a list")
             for st in p.get("styles") or []:
