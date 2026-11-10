@@ -74,7 +74,8 @@ async def test_slack_messages(gateway, fake_slack):
     gw = await gateway({"adapters": {"slack": {"bot_token_secret": "SLACK_BOT", "app_token_secret": "SLACK_APP",
                                                "min_interval_s": 0.3}},
                         "persons": {"p_roman": {"slack": ["T1/U1"]}},
-                        "policy": {"inbound_allowlist": ["p_roman"]}})
+                        "policy": {"inbound_allowlist": ["p_roman"]},
+                        "conversations": {"c1": {"channel": "slack", "key": "C1"}}})
     await wait_for(lambda: gw.gw.channel_up.get("slack"))
     slack: SlackAdapter = gw.gw.messaging["slack"]
 

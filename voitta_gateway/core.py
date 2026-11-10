@@ -96,6 +96,21 @@ class Gateway:
         return self.store.one("SELECT 1 FROM approved WHERE channel=? AND sender=?",
                               channel, sender_id) is not None
 
+    def listed(self, channel: str, key: dict) -> str | None:
+        """The `conversations` label of a group conversation, or None if it is not
+        listed. Signal keys a group as {"group": id}, Slack a channel as
+        {"channel": id}."""
+        value = key.get("group") or key.get("channel")
+        for label, conv in self.cfg.conversations.items():
+            if conv.channel == channel and conv.key == value:
+                return label
+        return None
+
+    def closed(self, channel: str, key: dict, kind: str) -> bool:
+        """A group that is not listed under `conversations`. Its traffic is dropped
+        before anything is stored."""
+        return kind == "group" and self.listed(channel, key) is None
+
     def opted_out(self, channel: str, address: str | None) -> bool:
         return bool(address) and self.store.one(
             "SELECT 1 FROM optouts WHERE channel=? AND address=?", channel, address) is not None
@@ -151,6 +166,8 @@ class Gateway:
                 p["transcript_error"] = str(e)[:300]
 
     async def inbound_message(self, m: Inbound) -> dict | None:
+        if self.closed(m.channel, m.conversation_key, m.kind):
+            return None                                           # policy: unlisted group
         cid = self.store.conversation(m.channel, m.conversation_key, m.kind)
         if self.store.message_by_platform(cid, m.platform_id):
             return None                                           # platform redelivery
@@ -217,6 +234,8 @@ class Gateway:
 
     def _known(self, channel: str, key: dict, kind: str, sender_id: str) -> tuple[str, str | None] | None:
         """Conversation id and person for follow-up events, or None if the sender is not let through."""
+        if self.closed(channel, key, kind):
+            return None
         cid = self.store.conversation(channel, key, kind)
         person = self.identity.lookup(channel, sender_id)
         if not self.allowed(channel, sender_id, person):
