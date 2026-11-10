@@ -159,6 +159,21 @@ class PulsePort:
                     p.kill()
 
 
+def _group_ids(node) -> list[str]:
+    """Every `groupId` value in a signal-cli envelope, at any depth."""
+    out = []
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k == "groupId" and isinstance(v, str):
+                out.append(v)
+            else:
+                out += _group_ids(v)
+    elif isinstance(node, list):
+        for v in node:
+            out += _group_ids(v)
+    return out
+
+
 class SignalAdapter(MessagingAdapter, CallAdapter):
     name = "signal"
     capabilities = {"text": True, "attachments": True, "reactions": True, "edit": True,
@@ -285,14 +300,16 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             self.gw.store.x("UPDATE raw_inbound SET processed=1 WHERE id=?", row["id"])
 
     def _closed_group(self, result: dict) -> bool:
-        """An envelope from a group not listed under `conversations`. Checked before
-        the raw envelope is written and before attachments are stored, so an
-        unlisted group leaves nothing behind (signal-cli's own attachment directory
-        is outside the gateway's reach)."""
-        env = result.get("envelope") or {}
-        dm = env.get("dataMessage") or (env.get("editMessage") or {}).get("dataMessage") or {}
-        group = (dm.get("groupInfo") or {}).get("groupId")
-        retval = bool(group) and self.gw.closed(self.name, {"group": group}, "group")
+        """An envelope that touches a group not listed under `conversations`.
+        Checked before the raw envelope is written and before attachments are
+        stored, so an unlisted group leaves nothing behind (signal-cli's own
+        attachment directory is outside the gateway's reach).
+
+        Every `groupId` anywhere in the envelope counts, not only the shapes
+        `_process` reads (dataMessage, edits), so sync copies from linked
+        devices, typing indicators and shapes added later fail closed."""
+        retval = any(self.gw.closed(self.name, {"group": g}, "group")
+                     for g in _group_ids(result.get("envelope") or {}))
         return retval
 
     def _author(self, uuid: str | None, number: str | None) -> str:
