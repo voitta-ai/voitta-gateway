@@ -41,7 +41,8 @@ def config(agent_url: str | None = None, speech_url: str | None = None, **calls)
     cfg = {"adapters": {"slack": {"bot_token_secret": "SLACK_BOT", "app_token_secret": "SLACK_APP",
                                   "min_interval_s": 0}},
            "persons": {"p_roman": {"slack": [f"T1/{ROMAN}"]}},
-           "policy": {"inbound_allowlist": ["p_roman"]}}
+           "policy": {"inbound_allowlist": ["p_roman"]},
+           "conversations": {c.lower(): {"channel": "slack", "key": c} for c in ("C1", "C2", "C3", "C4")}}
     if agent_url:
         cfg["adapters"]["slack"]["calls"] = {"public_base_url": "http://placeholder", "route": "main", **calls}
         cfg["routes"] = {"main": {"media_url": agent_url, "media_secret_secret": "TEST_MEDIA_SECRET",

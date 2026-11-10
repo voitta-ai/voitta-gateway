@@ -11,7 +11,8 @@ adapters:
     account: "+15550001111"     # a spare number, never a personal one
     data_dir: /signal           # signal-cli --config (holds the account keys)
     tcp: 127.0.0.1:7583
-    groups: mention             # mention | all | ignore
+    groups: mention             # mention | all | ignore (applies to groups listed under conversations)
+    send_read_receipts: false   # the default; delivery receipts are sent regardless (signal-cli)
     calls: true                 # needs signal-call-tunnel + PulseAudio (Linux)
     route: main
 
@@ -68,7 +69,18 @@ persons:
     slack: ["T0123/U0456"]
     phone: ["+15551112222"]
 
+# Groups (Signal groups, Slack channels) are closed unless listed: an unlisted
+# one produces no events and nothing is stored. Direct messages are governed by
+# policy.inbound_allowlist instead.
+conversations:
+  ops-group:
+    channel: signal
+    key: "<signal-group-id>"
+  ops-channel:
+    channel: slack
+    key: "<slack-channel-id>"
+
 policy:
-  inbound_allowlist: [p_roman]               # "*" lets everyone through; others are held
+  inbound_allowlist: [p_roman]               # default []: everyone else is held; "*" lets everyone through
   calls_allow_unknown: false
   block_emergency_numbers: true
