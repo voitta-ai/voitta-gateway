@@ -159,6 +159,21 @@ class PulsePort:
                     p.kill()
 
 
+def _group_ids(node) -> list[str]:
+    """Every `groupId` value in a signal-cli envelope, at any depth."""
+    out = []
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k == "groupId" and isinstance(v, str):
+                out.append(v)
+            else:
+                out += _group_ids(v)
+    elif isinstance(node, list):
+        for v in node:
+            out += _group_ids(v)
+    return out
+
+
 class SignalAdapter(MessagingAdapter, CallAdapter):
     name = "signal"
     capabilities = {"text": True, "attachments": True, "reactions": True, "edit": True,
@@ -266,6 +281,8 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
     async def _notification(self, method: str, params: dict) -> None:
         result = params.get("result", params) if "subscription" in params else params
         if method == "receive":
+            if self._closed_group(result):
+                return                                    # unlisted group: not even the raw envelope is kept
             rid = self.gw.store.x("INSERT INTO raw_inbound (channel, body) VALUES (?,?)",
                                   self.name, json.dumps(result)).lastrowid
             await self._process(result)
@@ -276,11 +293,29 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
     async def _replay_raw(self) -> None:
         for row in self.gw.store.q("SELECT * FROM raw_inbound WHERE channel=? AND processed=0 ORDER BY id",
                                    self.name):
+            result = json.loads(row["body"])
+            if self._closed_group(result):
+                # Kept before the group was unlisted; not kept any longer.
+                self.gw.store.x("DELETE FROM raw_inbound WHERE id=?", row["id"])
+                continue
             try:
-                await self._process(json.loads(row["body"]))
+                await self._process(result)
             except Exception:
                 log.exception("replaying raw inbound %s failed", row["id"])
             self.gw.store.x("UPDATE raw_inbound SET processed=1 WHERE id=?", row["id"])
+
+    def _closed_group(self, result: dict) -> bool:
+        """An envelope that touches a group not listed under `conversations`.
+        Checked before the raw envelope is written and before attachments are
+        stored, so an unlisted group leaves nothing behind (signal-cli's own
+        attachment directory is outside the gateway's reach).
+
+        Every `groupId` anywhere in the envelope counts, not only the shapes
+        `_process` reads (dataMessage, edits), so sync copies from linked
+        devices, typing indicators and shapes added later fail closed."""
+        retval = any(self.gw.closed(self.name, {"group": g}, "group")
+                     for g in _group_ids(result.get("envelope") or {}))
+        return retval
 
     def _author(self, uuid: str | None, number: str | None) -> str:
         if (uuid and self.aci and uuid == self.aci) or (number and number == self.account):
@@ -323,8 +358,8 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
 
     async def _process(self, result: dict) -> None:
         env = result.get("envelope") or {}
-        if not env:
-            return
+        if not env or self._closed_group(result):
+            return                                            # replayed rows from before a group was unlisted
         sender_id = env.get("sourceUuid") or env.get("sourceNumber")
         if not sender_id or self._author(env.get("sourceUuid"), env.get("sourceNumber")) == self.me:
             return                                            # our own (sync) messages

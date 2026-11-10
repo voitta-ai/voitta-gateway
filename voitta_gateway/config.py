@@ -6,11 +6,25 @@ variable (or a line in the optional env file); `Config.secret()` resolves them.
 from __future__ import annotations
 
 import os
+import unicodedata
 from pathlib import Path
 from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
+
+
+def clean_address(value: str) -> str:
+    """An account string with every invisible character removed.
+
+    Unicode format characters (category Cf: bidi controls such as U+202C, zero
+    widths, the BOM) ride along when a number is pasted from a chat client or a
+    contact card. They print as nothing, so the account looks right, and
+    signal-cli answers "not registered" for it. Re-registering the account is
+    the wrong, destructive response to that error; stripping the characters
+    here is the fix."""
+    retval = "".join(ch for ch in value if unicodedata.category(ch) != "Cf").strip()
+    return retval
 
 
 class MediaFormat(BaseModel):
@@ -39,12 +53,21 @@ class SignalConfig(BaseModel):
     binary: str = "signal-cli"
     data_dir: str | None = None                     # signal-cli --config dir (holds the keys)
     tcp: str = "127.0.0.1:7583"                     # JSON-RPC socket of the daemon
-    send_read_receipts: bool = True
+    # Off by default: a read receipt tells the sender a person saw the message.
+    # Delivery receipts are not covered by this switch -- signal-cli sends them
+    # whenever it receives, for every conversation including groups that are not
+    # listed under `conversations`, and no flag turns that off.
+    send_read_receipts: bool = False
     groups: Literal["mention", "all", "ignore"] = "mention"
     calls: bool = False
     route: str | None = None
     attachments_dir: str | None = None              # where signal-cli saves attachments
     pulse_latency_ms: int = 40
+
+    @field_validator("account", "aci")
+    @classmethod
+    def _clean(cls, v):
+        return clean_address(v) if v else v
 
 
 class SlackCalls(BaseModel):
@@ -82,6 +105,11 @@ class PhoneConfig(BaseModel):
     l16_byte_order: Literal["big", "little"] = "big"
     api_base: str = "https://api.telnyx.com/v2"
 
+    @field_validator("numbers")
+    @classmethod
+    def _clean(cls, v):
+        return [clean_address(n) for n in v]
+
 
 class Adapters(BaseModel):
     signal: SignalConfig | None = None
@@ -100,9 +128,33 @@ class Person(BaseModel):
     slack: list[str] = []                           # U123 or T123/U123
     phone: list[str] = []                           # E.164
 
+    @field_validator("signal", "slack", "phone")
+    @classmethod
+    def _clean(cls, v):
+        return [clean_address(a) for a in v]
+
+
+class Conversation(BaseModel):
+    """A group conversation the gateway listens to. Groups (Signal groups, Slack
+    channels) are closed unless listed here: an unlisted one produces no event,
+    no held row and no stored conversation.
+
+    Gating happens here, at read time, because the platforms offer no gate
+    earlier: on Signal anyone holding our profile key can add the account to a
+    group and it is a full member at once, with no pending invite to decline."""
+    channel: Literal["signal", "slack"]
+    key: str                                        # signal: group id; slack: channel id
+
+    @field_validator("key")
+    @classmethod
+    def _clean(cls, v):
+        return clean_address(v)
+
 
 class Policy(BaseModel):
-    inbound_allowlist: list[str] | Literal["*"] = "*"   # person ids; unknown senders -> held
+    # Person ids allowed to reach the agents; anyone else is held for approval.
+    # Empty by default; "*" lets every sender through and has to be chosen.
+    inbound_allowlist: list[str] | Literal["*"] = []
     calls_allow_unknown: bool = False
     opt_out_keywords: list[str] = ["STOP", "UNSUBSCRIBE"]
     block_emergency_numbers: bool = True
@@ -130,6 +182,7 @@ class Config(BaseModel):
     adapters: Adapters = Adapters()
     routes: dict[str, Route] = {}
     consumers: dict[str, Consumer] = {}
+    conversations: dict[str, Conversation] = {}     # label -> group conversation; unlisted groups are closed
     persons: dict[str, Person] = {}
     policy: Policy = Policy()
     speech: Speech | None = None

@@ -25,6 +25,7 @@ def config(fake, agent=None, **over):
                                 "calls": agent is not None, "route": "main" if agent else None}},
         "persons": {"p_roman": {"signal": [ROMAN]}},
         "policy": {"inbound_allowlist": ["p_roman"]},
+        "conversations": {"group1": {"channel": "signal", "key": "GROUP1"}},
     }
     if agent:
         cfg["routes"] = {"main": {"media_url": agent.url, "media_secret_secret": "TEST_MEDIA_SECRET",
