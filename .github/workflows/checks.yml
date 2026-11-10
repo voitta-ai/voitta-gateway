@@ -125,12 +125,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
+      # A rerun after a failure past this point (the release step) must not
+      # rebuild: floating base images and unpinned packages would push different
+      # bytes under a version tag consumers may already have pulled.
+      - name: Image already pushed?
+        id: image
+        if: steps.version.outputs.new == 'true'
+        run: |
+          if docker manifest inspect "ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "image for this version exists; not rebuilding"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # linux/amd64 only: deploy/Dockerfile targets one x86_64 host. The tunnel
       # stage builds RingRTC from source and is slow; the GitHub Actions cache
-      # keeps later releases from paying for it again. Pushing the same version
-      # tag again on a rerun overwrites it with the same build.
+      # keeps later releases from paying for it again.
       - uses: docker/build-push-action@v6
-        if: steps.version.outputs.new == 'true'
+        if: steps.version.outputs.new == 'true' && steps.image.outputs.exists != 'true'
         with:
           context: .
           file: deploy/Dockerfile
