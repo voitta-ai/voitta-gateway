@@ -151,6 +151,26 @@ adapters:
   every consumer as before. `message.status` and `operation.*` always go only to the consumer that
   sent the message.
 
+## Consumer contract
+
+- **Text is final when it reaches the gateway.** The consumer renders Markdown and splits; the
+  gateway does neither. Signal style ranges go on the text part, `styles: [{start, length, style}]`,
+  and a send over `max_text_units` (Signal: 2000) is `422 too_long`. Both count UTF-16 code units,
+  never characters. A consumer `label` is prefixed before the limit is checked, and styles are
+  shifted to match.
+- **Run-and-exit consumers poll.** `GET /v1/events/poll?after=<next>` with the cursor kept on disk;
+  persisting `next` is the ack. Events are at-least-once with stable ids, and sends take an
+  `idempotency_key` (per consumer, 24 h), so a timed-out POST can be retried safely.
+- **Signal messages** carry `timestamp` (the server timestamp) and `mentions: [{id, start, length,
+  self}]` exactly as signal-cli reports them: UTF-16 offsets, one U+FFFC per mention in the text.
+  React, edit or delete by `message_id`; the gateway keeps the platform ids.
+- **Signal history** is the gateway's own record (Signal has no history API): the messages it
+  delivered as events and the ones it sent, kept current through edits and deletes, from the time
+  it started recording. Group chatter that did not address the agent is not kept.
+- **Identity**: trust checks key on `sender.id` (an ACI on Signal). `person_id` comes from the
+  operator's `persons:` map in gateway.yaml and is for correlation; it is on every message,
+  reaction, edit, delete, held and status event (status: the other side of a direct conversation).
+
 ## Media protocol `voitta-media/1`
 
 The gateway connects to the route's `media_url` with `?call_id=…&ts=…&sig=…` (HMAC-SHA256 of

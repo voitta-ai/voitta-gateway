@@ -262,6 +262,17 @@ components:
                 addressed: {type: boolean, description: "DM, or the agent was mentioned"}
                 addressed_to: {$ref: "#/components/schemas/AddressedTo"}
                 conversation: {type: string, description: "label in gateway.yaml conversations (mapped groups only)"}
+                timestamp: {type: integer, description: "Signal: the message's server timestamp (ms)"}
+                mentions:
+                  type: array
+                  description: "Signal: as signal-cli reports them; offsets in UTF-16 code units, each mention one U+FFFC in the text"
+                  items:
+                    type: object
+                    properties:
+                      id: {type: [string, "null"], description: "ACI, or number"}
+                      start: {type: [integer, "null"]}
+                      length: {type: [integer, "null"]}
+                      self: {type: boolean, description: "this account was mentioned"}
                 slack_channel: {type: string}
 
     AddressedTo:
@@ -288,6 +299,7 @@ components:
                 channel: {$ref: "#/components/schemas/ChannelName"}
                 conversation_id: {type: string}
                 addressed_to: {$ref: "#/components/schemas/AddressedTo"}
+                person_id: {$ref: "#/components/schemas/PersonId"}
                 sender:
                   type: object
                   required: [id]
@@ -309,6 +321,7 @@ components:
                 status: {type: string, enum: [queued, sent, delivered, read, failed]}
                 error: {type: string}
                 addressed_to: {$ref: "#/components/schemas/AddressedTo"}
+                person_id: {$ref: "#/components/schemas/PersonId"}
 
     MessageEditedEvent:
       allOf:

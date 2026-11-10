@@ -192,9 +192,12 @@ paths:
   /v1/conversations/{conversation_id}/history:
     get:
       operationId: getHistory
-      summary: Recent messages, read from the platform (channels with the `history` capability)
+      summary: Recent messages, from the platform (`history` capability) or the gateway's own record
       description: |
         Newest last. With `thread`, the messages of the thread that message belongs to.
+        Platforms without a history API (Signal) are served from what the gateway recorded since it
+        started: messages it delivered as events (no held senders, no unaddressed group chatter) and
+        its own sends, kept current through edits and deletes.
         Includes messages the gateway never delivered as events (other people talking without
         a mention, the agent's own posts): this is context, not a second event stream.
       x-scope: events:read
@@ -606,6 +609,8 @@ components:
             interactions: {type: boolean, description: "emits interaction.received for buttons and menus"}
             voice_clips: {type: boolean}
             max_attachment_mb: {type: number}
+            max_text_units: {type: integer, description: "text limit in UTF-16 code units; longer sends are 422 too_long"}
+            styles: {type: boolean, description: "text parts accept `styles`"}
         calls:
           description: call capabilities, null for messaging-only channels
           type: [object, "null"]
@@ -667,7 +672,17 @@ components:
       required: [type, text]
       properties:
         type: {const: text}
-        text: {type: string}
+        text: {type: string, description: "final text: the gateway renders no Markdown and splits nothing"}
+        styles:
+          type: array
+          description: "ranges in UTF-16 code units into this part's text (channels with `styles`)"
+          items:
+            type: object
+            required: [start, length, style]
+            properties:
+              start: {type: integer, minimum: 0}
+              length: {type: integer, minimum: 1}
+              style: {type: string, enum: [BOLD, ITALIC, SPOILER, STRIKETHROUGH, MONOSPACE]}
     FilePart:
       type: object
       required: [type, attachment_id]
