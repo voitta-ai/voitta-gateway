@@ -293,8 +293,13 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
     async def _replay_raw(self) -> None:
         for row in self.gw.store.q("SELECT * FROM raw_inbound WHERE channel=? AND processed=0 ORDER BY id",
                                    self.name):
+            result = json.loads(row["body"])
+            if self._closed_group(result):
+                # Kept before the group was unlisted; not kept any longer.
+                self.gw.store.x("DELETE FROM raw_inbound WHERE id=?", row["id"])
+                continue
             try:
-                await self._process(json.loads(row["body"]))
+                await self._process(result)
             except Exception:
                 log.exception("replaying raw inbound %s failed", row["id"])
             self.gw.store.x("UPDATE raw_inbound SET processed=1 WHERE id=?", row["id"])

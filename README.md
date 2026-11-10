@@ -72,8 +72,10 @@ GET  /v1/held · POST /v1/held/{id}/approve|discard · GET/DELETE /v1/optouts   
   `STOP` opts out; calls to emergency numbers are refused.
 - **Closed by default**: `policy.inbound_allowlist` is empty, so every sender is held until
   listed or approved; groups and Slack channels produce nothing unless listed under
-  `conversations`, and leave nothing in the gateway's store: no raw envelope, attachment,
-conversation, held row or event (signal-cli's own attachment directory is outside its reach;
+  `conversations`, and from then on leave nothing in the gateway's store: no raw envelope,
+attachment, conversation, held row or event. Unlisting a group stops new storage and drops
+its unprocessed envelopes; what was stored while it was listed stays (signal-cli's own
+attachment directory is outside the gateway's reach;
 gating happens at read time because Signal offers none earlier: anyone
   holding the account's profile key can add it to a group as a full member);
   `send_read_receipts` is off. Delivery receipts are not affected: signal-cli sends them for
