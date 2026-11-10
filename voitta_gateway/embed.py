@@ -61,14 +61,22 @@ class Embedded:
         logged and the event is not retried."""
         self._subs.append((callback, types, after))
         if self._started:
-            self._tasks.append(asyncio.create_task(self._pump(callback, types, after)))
+            self._tasks.append(asyncio.create_task(self._pump(callback, types, self._cursor(after))))
+
+    def _cursor(self, after: str) -> int:
+        retval = self.gw.events.last_seq() if after == "now" else event_seq(after)
+        return retval
 
     async def start(self) -> None:
+        # Cursors are fixed before any adapter runs: adapters emit events as soon
+        # as they start (channel.up, and Signal replays unprocessed envelopes), and
+        # a pump that read "now" after that would skip them.
+        cursors = [self._cursor(after) for _cb, _types, after in self._subs]
+        for (cb, types, _after), cursor in zip(self._subs, cursors):
+            self._tasks.append(asyncio.create_task(self._pump(cb, types, cursor)))
+        self._started = True
         await self.gw.start()
         self.gw.outbox.start()
-        self._started = True
-        for cb, types, after in self._subs:
-            self._tasks.append(asyncio.create_task(self._pump(cb, types, after)))
 
     def send(self, body: dict) -> dict:
         """Queue an outbound message: the `POST /v1/messages` body, the same result."""
@@ -88,9 +96,8 @@ class Embedded:
             except Exception:
                 log.exception("stopping %s", adapter.name)
 
-    async def _pump(self, callback: Callback, types: list[str] | None, after: str) -> None:
+    async def _pump(self, callback: Callback, types: list[str] | None, cursor: int) -> None:
         events = self.gw.events
-        cursor = events.last_seq() if after == "now" else event_seq(after)
         while True:
             await events.wait(cursor, 30.0)
             batch = events.after(cursor)
