@@ -6,9 +6,9 @@
 #   docker build -f deploy/Dockerfile --target with-signal-calls -t voitta-gateway .  # experimental
 #
 # The default image ships Signal and Slack messaging and phone calls (Telnyx). Signal voice calls
-# are experimental and opt-in: the tunnel ref pinned below does not compile against RingRTC >= 2.72
-# (the CVE floor), so `with-signal-calls` does not build until it is moved. BuildKit builds only the
-# stages a target needs, so the default build never touches the tunnel stage.
+# are experimental and opt-in (`with-signal-calls`); the tunnel is built against RingRTC >= 2.72
+# (the CVE floor) with its RingRTC patches ported in deploy/tunnel/. BuildKit builds only the stages
+# a target needs, so the default build never touches the tunnel stage.
 #
 # The tunnel stage is the slow one (RingRTC + a ~100 MB prebuilt WebRTC download, several GB of disk).
 
@@ -31,6 +31,18 @@ RUN git clone --recurse-submodules "$TUNNEL_REPO" tunnel \
     && v=$(sed -n '/\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' Cargo.toml) \
     && echo "RingRTC $v" \
     && python3 -c "import sys; v=tuple(map(int,'$v'.split('.'))); sys.exit(0 if v>=(2,72,0) else 'RingRTC $v < 2.72.0 (CVE-2026-113380)')"
+# The tunnel patches RingRTC (a custom audio backend, a VPIO switch) from its build.rs, but its
+# patches target 2.65.1 and RingRTC 2.72 rewrote the code they touch. deploy/tunnel/ carries the
+# same two patches ported to RINGRTC_TAG. They are applied here, before cargo runs: build.rs then
+# finds its marker strings and skips its own copies (it would otherwise apply them mid-build and
+# stop, asking for a second `cargo build`).
+# The tunnel's own source also needs RingRTC 2.72's API (devices selected by id, CallManager
+# calls that report failures as platform events instead of returning Result).
+COPY deploy/tunnel/*.patch /src/patches/
+RUN cd tunnel/third-party/ringrtc \
+    && git apply /src/patches/ringrtc-disable-vpio.patch \
+    && git apply /src/patches/ringrtc-custom-audio-backend.patch \
+    && cd ../.. && git apply /src/patches/signal-call-tunnel-ringrtc-2.74.patch
 RUN cd tunnel/signal-call-tunnel && cargo build --release \
     && cp target/release/signal-call-tunnel /usr/local/bin/
 

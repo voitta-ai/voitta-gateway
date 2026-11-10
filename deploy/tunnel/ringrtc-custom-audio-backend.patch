@@ -1,0 +1,371 @@
+diff --git a/src/rust/src/bin/call_sim-cli/main.rs b/src/rust/src/bin/call_sim-cli/main.rs
+index eb0ed21..3632b24 100644
+--- a/src/rust/src/bin/call_sim-cli/main.rs
++++ b/src/rust/src/bin/call_sim-cli/main.rs
+@@ -318,6 +318,7 @@ fn main() -> Result<()> {
+             aec_enabled: args.aec,
+             ns_enabled: args.ns,
+             agc_enabled: args.agc,
++            ..Default::default()
+         },
+         audio_encoder_config: AudioEncoderConfig {
+             initial_packet_size_ms: args
+diff --git a/src/rust/src/webrtc/audio_device_module.rs b/src/rust/src/webrtc/audio_device_module.rs
+index 86f1271..6fd5892 100644
+--- a/src/rust/src/webrtc/audio_device_module.rs
++++ b/src/rust/src/webrtc/audio_device_module.rs
+@@ -34,7 +34,7 @@ use crate::{
+     webrtc,
+     webrtc::{
+         audio_device_module_utils::{DeviceCollectionWrapper, do_cubeb_redactions},
+-        peer_connection_factory::{AudioDevice, AudioDeviceList, AudioDeviceObserver},
++        peer_connection_factory::{AudioBackend, AudioDevice, AudioDeviceList, AudioDeviceObserver},
+     },
+ };
+ 
+@@ -1298,6 +1298,221 @@ impl Drop for LogDisableGuard {
+     }
+ }
+ 
++/// A safe handle to WebRTC's audio transport, handed to a [`CustomAudioDevice`].
++///
++/// Holds the opaque callback value WebRTC registers through
++/// `SetCallbackIndirect` and exposes only safe PCM exchange. Until WebRTC has
++/// registered it, playout yields no samples and recorded audio is dropped.
++/// Cloning yields another handle to the same transport.
++#[derive(Clone)]
++pub struct AudioTransport {
++    inner: Arc<Mutex<Option<usize>>>,
++}
++
++impl AudioTransport {
++    fn callback(&self) -> Option<usize> {
++        self.inner.lock().ok().and_then(|guard| *guard)
++    }
++
++    /// Pull up to `samples` frames of playout audio (audio *received* from the
++    /// remote peer) from WebRTC. The returned vector may be shorter than
++    /// `samples` (including empty) when WebRTC has nothing to play.
++    pub fn pull_playout(&self, samples: usize, channels: u32, samples_per_sec: u32) -> Vec<i16> {
++        match self.callback() {
++            Some(callback) => {
++                Worker::need_more_play_data(callback, samples, channels, samples_per_sec).data
++            }
++            None => Vec::new(),
++        }
++    }
++
++    /// Hand recorded audio (audio to *send* to the remote peer) to WebRTC.
++    pub fn push_recording(
++        &self,
++        samples: Vec<i16>,
++        channels: u32,
++        samples_per_sec: u32,
++        total_delay: Duration,
++    ) {
++        if let Some(callback) = self.callback() {
++            Worker::recorded_data_is_available(
++                callback,
++                samples,
++                channels,
++                samples_per_sec,
++                total_delay,
++                0,
++                0,
++                false,
++                None,
++            );
++        }
++    }
++}
++
++/// Lifecycle transitions delivered to a [`CustomAudioDevice`] by WebRTC.
++#[non_exhaustive]
++#[derive(Clone, Copy, Debug)]
++pub enum AudioControlEvent {
++    /// WebRTC wants playout to begin; start pulling via [`AudioTransport`].
++    StartPlayout,
++    /// WebRTC wants playout to stop.
++    StopPlayout,
++    /// WebRTC wants recording to begin. When `send_to_webrtc` is false the
++    /// engine is warming up and captured audio should be discarded rather than
++    /// pushed via [`AudioTransport`].
++    StartRecording { send_to_webrtc: bool },
++    /// WebRTC wants recording to stop.
++    StopRecording,
++    /// The module is shutting down; `run` must return promptly.
++    Terminate,
++}
++
++/// The control channel a [`CustomAudioDevice`] uses to observe playout/record
++/// lifecycle transitions.
++pub struct AudioControl {
++    receiver: mpsc::Receiver<AudioControlEvent>,
++}
++
++impl AudioControl {
++    /// Block until the next event. Returns `None` once the module is gone,
++    /// which must be treated the same as [`AudioControlEvent::Terminate`].
++    pub fn recv(&self) -> Option<AudioControlEvent> {
++        self.receiver.recv().ok()
++    }
++
++    /// Return the next event if one is immediately available, without blocking.
++    pub fn try_recv(&self) -> Option<AudioControlEvent> {
++        self.receiver.try_recv().ok()
++    }
++}
++
++/// An external audio backend that exchanges PCM with WebRTC in place of the
++/// built-in cubeb device, selected via [`AudioBackend::Custom`].
++///
++/// The implementor owns its audio loop: it observes lifecycle transitions from
++/// [`AudioControl`] and exchanges PCM windows with WebRTC through
++/// [`AudioTransport`], returning from `run` only after observing
++/// [`AudioControlEvent::Terminate`] (or `AudioControl::recv` yielding `None`).
++///
++/// The device chooses its own PCM format by passing the desired channel count
++/// and sample rate to the [`AudioTransport`] methods; WebRTC resamples as
++/// needed.
++pub trait CustomAudioDevice: Send + Sync {
++    /// Name reported through device enumeration. A single synthetic input and
++    /// output device with this name is exposed.
++    fn device_name(&self) -> String;
++
++    /// Fixed playout delay (ms) reported to WebRTC's timing logic.
++    fn playout_delay_ms(&self) -> u16 {
++        10
++    }
++
++    /// Run the device's audio loop until `control` yields `Terminate`/`None`.
++    fn run(&self, transport: AudioTransport, control: AudioControl);
++}
++
++/// Spawn the module-side worker thread for a [`CustomAudioDevice`].
++///
++/// Mirrors [`Worker::spawn`]'s contract (device-name reporting, start
++/// signaling, playout-delay replies) but delegates all audio I/O to `device`,
++/// translating the internal [`Event`] stream into safe [`AudioControlEvent`]s.
++fn spawn_custom_worker(
++    device: Arc<dyn CustomAudioDevice>,
++    started_signal: mpsc::Sender<Option<String>>,
++    receiver: mpsc::Receiver<Event>,
++    playout_delay_sender: mpsc::Sender<anyhow::Result<u16>>,
++    input_device_names: Arc<Mutex<AudioDeviceList>>,
++    output_device_names: Arc<Mutex<AudioDeviceList>>,
++) -> JoinHandle<()> {
++    thread::spawn(move || {
++        let name = device.device_name();
++        let playout_delay_ms = device.playout_delay_ms();
++
++        // Expose exactly one synthetic device so enumeration succeeds.
++        let audio_device = AudioDevice {
++            name: name.clone(),
++            unique_id: name.clone(),
++        };
++        if let Ok(mut names) = input_device_names.lock() {
++            names.list = vec![audio_device.clone()];
++        }
++        if let Ok(mut names) = output_device_names.lock() {
++            names.list = vec![audio_device];
++        }
++
++        // The opaque callback WebRTC registers via SetCallbackIndirect.
++        let callback = Arc::new(Mutex::new(None));
++        let (control_sender, control_receiver) = mpsc::channel();
++
++        // Run the device's audio loop on its own thread.
++        let driver = {
++            let transport = AudioTransport {
++                inner: callback.clone(),
++            };
++            let control = AudioControl {
++                receiver: control_receiver,
++            };
++            let device = device.clone();
++            thread::spawn(move || device.run(transport, control))
++        };
++
++        if let Err(e) = started_signal.send(Some(name)) {
++            error!("custom ADM: failed to signal start: {}", e);
++        }
++
++        for received in receiver {
++            match received {
++                Event::SetCallbackIndirect(opaque_callback_data) => {
++                    if let Ok(mut guard) = callback.lock() {
++                        *guard = Some(opaque_callback_data);
++                    }
++                }
++                Event::StartPlayout => {
++                    let _ = control_sender.send(AudioControlEvent::StartPlayout);
++                }
++                Event::StopPlayout => {
++                    let _ = control_sender.send(AudioControlEvent::StopPlayout);
++                }
++                Event::StartRecording => {
++                    let _ = control_sender.send(AudioControlEvent::StartRecording {
++                        send_to_webrtc: true,
++                    });
++                }
++                Event::WarmupRecording(_) => {
++                    let _ = control_sender.send(AudioControlEvent::StartRecording {
++                        send_to_webrtc: false,
++                    });
++                }
++                Event::StopRecording => {
++                    let _ = control_sender.send(AudioControlEvent::StopRecording);
++                }
++                Event::PlayoutDelay => {
++                    if let Err(e) = playout_delay_sender.send(Ok(playout_delay_ms)) {
++                        warn!("custom ADM: failed to send playout delay: {}", e);
++                    }
++                }
++                Event::Terminate => {
++                    let _ = control_sender.send(AudioControlEvent::Terminate);
++                    break;
++                }
++                // The remaining events are cubeb device-management concerns
++                // (device selection, input processing, observers) that have no
++                // meaning for a custom backend.
++                _ => {}
++            }
++        }
++
++        // Make sure the device stops even if the event channel closed without a
++        // Terminate, then wait for its loop to unwind.
++        let _ = control_sender.send(AudioControlEvent::Terminate);
++        drop(control_sender);
++        if let Err(e) = driver.join() {
++            error!("custom ADM: device thread join failed: {:?}", e);
++        }
++    })
++}
++
+ fn log_c_str(s: &CStr) {
+     if PAUSE_LOGGING.load(Ordering::SeqCst) {
+         return;
+@@ -1316,7 +1531,7 @@ fn log_c_str(s: &CStr) {
+ }
+ 
+ impl AudioDeviceModule {
+-    pub fn new() -> anyhow::Result<Self> {
++    pub fn new(backend: AudioBackend) -> anyhow::Result<Self> {
+         if !log_enabled()
+             && let Err(e) = set_logging(LogLevel::Normal, Some(log_c_str))
+         {
+@@ -1328,14 +1543,24 @@ impl AudioDeviceModule {
+         let (sender, receiver) = mpsc::channel();
+         let (started_sender, started_receiver) = mpsc::channel();
+         let (playout_delay_sender, playout_delay_receiver) = mpsc::channel();
+-        let cubeb_worker = Worker::spawn(
+-            started_sender,
+-            receiver,
+-            sender.clone(),
+-            playout_delay_sender,
+-            input_device_names.clone(),
+-            output_device_names.clone(),
+-        );
++        let cubeb_worker = match backend {
++            AudioBackend::Cubeb => Worker::spawn(
++                started_sender,
++                receiver,
++                sender.clone(),
++                playout_delay_sender,
++                input_device_names.clone(),
++                output_device_names.clone(),
++            ),
++            AudioBackend::Custom(device) => spawn_custom_worker(
++                device,
++                started_sender,
++                receiver,
++                playout_delay_sender,
++                input_device_names.clone(),
++                output_device_names.clone(),
++            ),
++        };
+ 
+         // Ensure the thread started correctly
+ 
+@@ -1835,7 +2060,7 @@ mod audio_device_module_tests {
+             Some(|cstr| println!("{:?}", cstr)),
+         )
+         .expect("failed to set logging");
+-        let mut adm = AudioDeviceModule::new().unwrap();
++        let mut adm = AudioDeviceModule::new(AudioBackend::Cubeb).unwrap();
+         assert_eq!(adm.init(0), 0);
+ 
+         assert_eq!(adm.backend_name(), expected_backend.to_string());
+diff --git a/src/rust/src/webrtc/peer_connection_factory.rs b/src/rust/src/webrtc/peer_connection_factory.rs
+index 4f386b5..7a9bcff 100644
+--- a/src/rust/src/webrtc/peer_connection_factory.rs
++++ b/src/rust/src/webrtc/peer_connection_factory.rs
+@@ -18,6 +18,8 @@ pub use pcf::{RffiPeerConnectionFactoryInterface, RffiPeerConnectionFactoryOwner
+ #[cfg(feature = "native")]
+ use crate::webrtc::audio_device_module::AudioDeviceModule;
+ #[cfg(feature = "native")]
++use crate::webrtc::audio_device_module::CustomAudioDevice;
++#[cfg(feature = "native")]
+ use crate::webrtc::audio_device_module_callbacks::{AUDIO_DEVICE_CBS_PTR, decrement_adm_ref_count};
+ #[cfg(not(feature = "sim"))]
+ use crate::webrtc::ffi::peer_connection_factory as pcf;
+@@ -217,12 +219,42 @@ pub struct RffiAudioConfigWrapper {
+     adm: Option<Arc<Mutex<AudioDeviceModule>>>,
+ }
+ 
++/// Selects which audio device backend a [`PeerConnectionFactory`] uses.
++///
++/// `Cubeb` is the default and drives a real local audio device. `Custom`
++/// delegates all audio I/O to a caller-supplied [`CustomAudioDevice`], which is
++/// useful for headless/server use or for bridging audio to another transport
++/// without touching any host audio device.
++///
++/// Cloning a `Custom` backend shares the same device instance; constructing two
++/// `PeerConnectionFactory`s from one such backend is not supported.
++#[derive(Clone, Default)]
++pub enum AudioBackend {
++    /// Use the real cubeb-backed audio device module.
++    #[default]
++    Cubeb,
++    /// Delegate audio I/O to a caller-supplied device.
++    #[cfg(feature = "native")]
++    Custom(Arc<dyn CustomAudioDevice>),
++}
++
++impl std::fmt::Debug for AudioBackend {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        match self {
++            AudioBackend::Cubeb => write!(f, "Cubeb"),
++            #[cfg(feature = "native")]
++            AudioBackend::Custom(_) => write!(f, "Custom(..)"),
++        }
++    }
++}
++
+ #[derive(Clone, Debug)]
+ pub struct AudioConfig {
+     pub high_pass_filter_enabled: bool,
+     pub aec_enabled: bool,
+     pub ns_enabled: bool,
+     pub agc_enabled: bool,
++    pub audio_backend: AudioBackend,
+ }
+ 
+ impl Default for AudioConfig {
+@@ -232,6 +264,7 @@ impl Default for AudioConfig {
+             aec_enabled: true,
+             ns_enabled: true,
+             agc_enabled: true,
++            audio_backend: AudioBackend::default(),
+         }
+     }
+ }
+@@ -271,7 +304,7 @@ impl AudioConfig {
+         mut audio_device_observer: Option<Box<dyn AudioDeviceObserver>>,
+     ) -> Result<RffiAudioConfigWrapper> {
+         #[cfg(feature = "native")]
+-        let (adm_borrowed, adm_arc) = match AudioDeviceModule::new() {
++        let (adm_borrowed, adm_arc) = match AudioDeviceModule::new(self.audio_backend.clone()) {
+             Ok(mut adm) => {
+                 if let Some(observer) = audio_device_observer.take() {
+                     adm.register_audio_device_callback(observer)?;
