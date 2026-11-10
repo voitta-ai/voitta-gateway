@@ -1,7 +1,14 @@
-# voitta-gateway for one Linux x86_64 host: gateway + signal-cli (native) + signal-call-tunnel + PulseAudio.
+# voitta-gateway for one Linux x86_64 host: gateway + signal-cli (native) + PulseAudio, and,
+# opt-in, signal-call-tunnel for Signal voice calls.
 # The gateway, signal-cli and the tunnels must share one audio server, so they share one container.
 #
-#   docker build -f deploy/Dockerfile -t voitta-gateway .
+#   docker build -f deploy/Dockerfile -t voitta-gateway .                           # default: no Signal calls
+#   docker build -f deploy/Dockerfile --target with-signal-calls -t voitta-gateway .  # experimental
+#
+# The default image ships Signal and Slack messaging and phone calls (Telnyx). Signal voice calls
+# are experimental and opt-in: the tunnel ref pinned below does not compile against RingRTC >= 2.72
+# (the CVE floor), so `with-signal-calls` does not build until it is moved. BuildKit builds only the
+# stages a target needs, so the default build never touches the tunnel stage.
 #
 # The tunnel stage is the slow one (RingRTC + a ~100 MB prebuilt WebRTC download, several GB of disk).
 
@@ -36,16 +43,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     && mkdir -p /opt/signal-cli && tar xzf /tmp/sc.tgz -C /opt/signal-cli \
     && find /opt/signal-cli -type f -name signal-cli -exec install -m 0755 {} /usr/local/bin/signal-cli \;
 
-# ---------------------------------------------------------------- runtime
-FROM python:3.12-slim-bookworm
+# ---------------------------------------------------------------- runtime (shared)
+FROM python:3.12-slim-bookworm AS base
 RUN apt-get update && apt-get install -y --no-install-recommends \
         pulseaudio pulseaudio-utils libpulse0 tini ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 voitta
-COPY --from=tunnel /usr/local/bin/signal-call-tunnel /usr/local/bin/
 COPY --from=signalcli /usr/local/bin/signal-cli /usr/local/bin/
-ENV SIGNAL_CALL_TUNNEL_BIN=/usr/local/bin/signal-call-tunnel \
-    XDG_RUNTIME_DIR=/tmp/runtime-voitta \
+ENV XDG_RUNTIME_DIR=/tmp/runtime-voitta \
     PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY pyproject.toml README.md ./
@@ -59,3 +64,11 @@ VOLUME ["/data", "/signal"]
 EXPOSE 8700 8800
 ENTRYPOINT ["tini", "--", "/usr/local/bin/entrypoint.sh"]
 CMD ["voitta-gateway", "--config", "/etc/voitta/gateway.yaml"]
+
+# ---------------------------------------------------------------- with-signal-calls (opt-in)
+FROM base AS with-signal-calls
+COPY --from=tunnel /usr/local/bin/signal-call-tunnel /usr/local/bin/
+ENV SIGNAL_CALL_TUNNEL_BIN=/usr/local/bin/signal-call-tunnel
+
+# ---------------------------------------------------------------- default (last stage: no --target)
+FROM base AS runtime
