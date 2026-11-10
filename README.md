@@ -15,7 +15,7 @@ Phone   ─┘   (one process)    └─ media WebSocket    (per call; the gatew
 
 | Channel | Messaging | Voice |
 |---|---|---|
-| Signal | signal-cli JSON-RPC daemon | signal-call-tunnel + PulseAudio (experimental, Linux) |
+| Signal | signal-cli JSON-RPC daemon | signal-call-tunnel + PulseAudio (experimental, Linux; not in the default image) |
 | Slack | Socket Mode (watchdog, blocks, buttons, history) | voice clips -> transcripts; outbound calls via a browser join page |
 | Phone | — | Telnyx Call Control + media streaming, L16 16 kHz |
 
@@ -29,7 +29,9 @@ python examples/echo_agent.py                                   # a voice agent 
 ```
 
 Production is one Linux host via [deploy/](deploy/) (Docker Compose: gateway + signal-cli +
-signal-call-tunnel + PulseAudio in one container, Caddy for the public ingress).
+PulseAudio in one container, Caddy for the public ingress). Signal voice calls need
+signal-call-tunnel, which only the `with-signal-calls` build target includes; it is experimental
+and does not build yet (see the Dockerfile header).
 First live tests: [docs/SPIKE.md](docs/SPIKE.md).
 
 The service needs the `service` extra (FastAPI, uvicorn): `pip install "voitta-gateway[service]"`.

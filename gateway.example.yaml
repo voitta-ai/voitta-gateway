@@ -13,7 +13,7 @@ adapters:
     tcp: 127.0.0.1:7583
     groups: mention             # mention | all | ignore (applies to groups listed under conversations)
     send_read_receipts: false   # the default; delivery receipts are sent regardless (signal-cli)
-    calls: true                 # needs signal-call-tunnel + PulseAudio (Linux)
+    calls: false                # experimental: needs the with-signal-calls image (signal-call-tunnel)
     route: main
 
   slack:
