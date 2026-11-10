@@ -64,13 +64,15 @@ jobs:
 
       # Structural pre-publish gate (ported from shmobster): token and key
       # shapes, account ids, private IPs, internal domains. The name wordlist
-      # is private and stays off CI. spec/ is not scanned: its JSON-pointer
-      # $refs are 40-character paths that match the AWS-secret shape.
+      # is private and stays off CI. Everything tracked is scanned except two
+      # trees whose fixtures match the structural shapes by construction:
+      # spec/ (JSON-pointer $refs are 40-character paths, the AWS-secret shape)
+      # and tests/ (fake ACIs end in a 12-digit group, the AWS-account shape).
       - name: Sensitive-term gate (structural)
         run: |
           bash scripts/check-sensitive-terms.sh \
             voitta_gateway/ voitta_ask/ voitta_speech/ examples/ deploy/ docs/ \
-            README.md gateway.example.yaml .env.example
+            scripts/ .github/ README.md gateway.example.yaml .env.example pyproject.toml
 
   # Tag-on-bump, as in shmobster. Feature PRs leave the version alone; a release
   # is its own commit that moves voitta_gateway.__version__ (and pyproject.toml,
@@ -81,6 +83,12 @@ jobs:
   # GITHUB_TOKEN triggers no other workflow.
   release:
     needs: check
+    # One release at a time, never cancelled midway: two master pushes in quick
+    # succession would otherwise both see the version untagged and race to
+    # publish it from different commits. The second waits, then sees the tag.
+    concurrency:
+      group: release
+      cancel-in-progress: false
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
