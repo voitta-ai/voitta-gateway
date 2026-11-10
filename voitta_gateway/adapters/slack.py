@@ -32,8 +32,11 @@ from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
 import httpx
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+try:                    # the service extra; Slack messaging works without it, calls do not
+    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+    from fastapi.responses import HTMLResponse
+except ImportError:
+    FastAPI = WebSocket = WebSocketDisconnect = HTMLResponse = None
 from slack_sdk.errors import SlackApiError
 from slack_sdk.socket_mode.aiohttp import SocketModeClient
 from slack_sdk.socket_mode.request import SocketModeRequest

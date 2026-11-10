@@ -14,10 +14,9 @@ import uvicorn
 from fastapi import FastAPI
 
 from .api import build_api
-from .calls import CallManager
+from .build import build_gateway
 from .config import Config, host_port
 from .core import Gateway
-from .outbox import Outbox
 
 log = logging.getLogger(__name__)
 
@@ -31,16 +30,8 @@ class _Server(uvicorn.Server):
 
 
 def build(cfg: Config, *, signal_port_factory=None, telnyx_http=None) -> tuple[Gateway, FastAPI, FastAPI | None]:
-    gw = Gateway(cfg)
-    gw.outbox = Outbox(gw)
-    gw.calls = CallManager(gw)
-    a = cfg.adapters
-    if a.signal:
-        from .adapters.signal import SignalAdapter
-        s = SignalAdapter(a.signal, port_factory=signal_port_factory)
-        gw.messaging["signal"] = s
-        if a.signal.calls:
-            gw.voice["signal"] = s
+    """The service shape: the shared builder plus the private API and, when an
+    adapter needs one, the public ingress."""
     ingress = None
 
     def _ingress() -> FastAPI:
@@ -49,22 +40,8 @@ def build(cfg: Config, *, signal_port_factory=None, telnyx_http=None) -> tuple[G
             ingress = FastAPI(title="voitta-gateway ingress", docs_url=None, redoc_url=None, openapi_url=None)
         return ingress
 
-    if a.slack:
-        from .adapters.slack import SlackAdapter
-        sl = SlackAdapter(a.slack, cfg.secret(a.slack.bot_token_secret), cfg.secret(a.slack.app_token_secret))
-        gw.messaging["slack"] = sl
-        if a.slack.calls:
-            gw.voice["slack"] = sl
-            sl.mount(_ingress())
-    if a.phone:
-        from .adapters.telnyx import TelnyxAdapter
-        t = TelnyxAdapter(a.phone, cfg.secret(a.phone.api_key_secret),
-                          cfg.secret(a.phone.public_key_secret) if a.phone.public_key_secret else None,
-                          http=telnyx_http)
-        if a.phone.verify_signatures and not a.phone.public_key_secret:
-            raise ValueError("adapters.phone.verify_signatures needs public_key_secret")
-        gw.voice["phone"] = t
-        t.mount(_ingress())
+    gw = build_gateway(cfg, ingress=_ingress, signal_port_factory=signal_port_factory,
+                       telnyx_http=telnyx_http)
     api = build_api(gw)
     return gw, api, ingress
 
