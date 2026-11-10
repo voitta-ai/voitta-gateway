@@ -7,6 +7,8 @@ refused with a message saying so.
 """
 from __future__ import annotations
 
+import os
+import shutil
 from typing import Callable
 
 from .calls import CallManager
@@ -22,6 +24,12 @@ def build_gateway(cfg: Config, *, ingress: Callable[[], object] | None = None,
     gw.calls = CallManager(gw)
     a = cfg.adapters
     if a.signal:
+        if a.signal.calls and a.signal.spawn and not _tunnel_present():
+            # signal-cli runs here and would start signal-call-tunnel per call; without
+            # it calls ring unanswered while the gateway advertises them. The default
+            # image has no tunnel (deploy/Dockerfile, target with-signal-calls).
+            raise ValueError("adapters.signal.calls needs signal-call-tunnel, which is not installed "
+                             "(build the with-signal-calls image, or set calls: false)")
         from .adapters.signal import SignalAdapter
         s = SignalAdapter(a.signal, port_factory=signal_port_factory)
         gw.messaging["signal"] = s
@@ -48,4 +56,10 @@ def build_gateway(cfg: Config, *, ingress: Callable[[], object] | None = None,
         gw.voice["phone"] = t
         t.mount(ingress())
     retval = gw
+    return retval
+
+
+def _tunnel_present() -> bool:
+    path = os.environ.get("SIGNAL_CALL_TUNNEL_BIN") or shutil.which("signal-call-tunnel")
+    retval = bool(path) and os.access(path, os.X_OK)
     return retval
