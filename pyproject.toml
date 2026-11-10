@@ -4,8 +4,6 @@ version = "0.1.0"
 description = "Messaging and voice gateway for Voitta agents: Signal, Slack, phone (Telnyx)"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.30",
     "httpx>=0.27",
     "websockets>=13",
     "pydantic>=2.7",
@@ -18,9 +16,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.24", "pytest-timeout>=2.3", "jsonschema>=4.21", "openapi-spec-validator>=0.7"]
+# The REST API and event stream (`voitta-gateway` command). An agent embedding
+# the gateway as a library (voitta_gateway.embed) does not need it.
+service = ["fastapi>=0.115", "uvicorn[standard]>=0.30"]
+dev = ["voitta-gateway[service]", "pytest>=8", "pytest-asyncio>=0.24", "pytest-timeout>=2.3", "jsonschema>=4.21", "openapi-spec-validator>=0.7"]
 pipecat = ["pipecat-ai[websocket]>=0.0.90"]
-ask = ["faster-whisper>=1.1", "piper-tts>=1.3"]
+ask = ["voitta-gateway[service]", "faster-whisper>=1.1", "piper-tts>=1.3"]
 
 [project.scripts]
 voitta-gateway = "voitta_gateway.__main__:main"

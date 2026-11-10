@@ -50,7 +50,7 @@ ENV SIGNAL_CALL_TUNNEL_BIN=/usr/local/bin/signal-call-tunnel \
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY voitta_gateway ./voitta_gateway
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir '.[service]'
 COPY examples ./examples
 COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN mkdir -p /data /signal && chown voitta:voitta /data /signal   # named volumes inherit this

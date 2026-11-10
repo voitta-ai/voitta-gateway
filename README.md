@@ -32,6 +32,31 @@ Production is one Linux host via [deploy/](deploy/) (Docker Compose: gateway + s
 signal-call-tunnel + PulseAudio in one container, Caddy for the public ingress).
 First live tests: [docs/SPIKE.md](docs/SPIKE.md).
 
+The service needs the `service` extra (FastAPI, uvicorn): `pip install "voitta-gateway[service]"`.
+`[dev]` includes it.
+
+## Embed it (library mode)
+
+One long-running agent that owns its own identities can run the same core in-process,
+with no HTTP listener and without the `service` extra:
+
+```python
+from voitta_gateway import embed
+
+gw = embed.build("gateway.yaml", consumer="leads")    # or a Config
+gw.on_event(handler, types=["message.*"], after="now") # async handler(event), same CloudEvents envelope
+await gw.start()
+gw.send({"to": {"conversation_id": cid}, "parts": [{"type": "text", "text": "hi"}]})  # POST /v1/messages body
+await gw.stop()
+```
+
+`app.build` (the service) and `embed.build` share one builder (`build.build_gateway`).
+Events come from the same persisted log, so `after=<event id>` resumes where a previous run
+stopped. Adapters that need public HTTP (`adapters.phone`, Slack calls) are service-only and
+refused at build time. **One owner per identity** holds in both shapes: an embedded gateway
+runs its account's signal-cli and its Slack app's Socket Mode connection, so no other process
+(service or library) may use either. Example: [examples/embedded_echo.py](examples/embedded_echo.py).
+
 ## voitta-ask: call someone, read a text, get the answer as text
 
 A voice agent behind the gateway ([voitta_ask/](voitta_ask/), API in

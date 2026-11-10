@@ -6,10 +6,14 @@ import asyncio
 import logging
 
 from . import config
-from .app import run
 
 
 def main() -> None:
+    try:
+        from .app import run
+    except ImportError as e:
+        raise SystemExit(f"voitta-gateway: the service needs the 'service' extra "
+                         f"(pip install 'voitta-gateway[service]'): {e}")
     ap = argparse.ArgumentParser(prog="voitta-gateway")
     ap.add_argument("--config", "-c", default="gateway.yaml")
     ap.add_argument("--log-level", default="INFO")
