@@ -266,6 +266,8 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
     async def _notification(self, method: str, params: dict) -> None:
         result = params.get("result", params) if "subscription" in params else params
         if method == "receive":
+            if self._closed_group(result):
+                return                                    # unlisted group: not even the raw envelope is kept
             rid = self.gw.store.x("INSERT INTO raw_inbound (channel, body) VALUES (?,?)",
                                   self.name, json.dumps(result)).lastrowid
             await self._process(result)
@@ -281,6 +283,17 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             except Exception:
                 log.exception("replaying raw inbound %s failed", row["id"])
             self.gw.store.x("UPDATE raw_inbound SET processed=1 WHERE id=?", row["id"])
+
+    def _closed_group(self, result: dict) -> bool:
+        """An envelope from a group not listed under `conversations`. Checked before
+        the raw envelope is written and before attachments are stored, so an
+        unlisted group leaves nothing behind (signal-cli's own attachment directory
+        is outside the gateway's reach)."""
+        env = result.get("envelope") or {}
+        dm = env.get("dataMessage") or (env.get("editMessage") or {}).get("dataMessage") or {}
+        group = (dm.get("groupInfo") or {}).get("groupId")
+        retval = bool(group) and self.gw.closed(self.name, {"group": group}, "group")
+        return retval
 
     def _author(self, uuid: str | None, number: str | None) -> str:
         if (uuid and self.aci and uuid == self.aci) or (number and number == self.account):
@@ -323,8 +336,8 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
 
     async def _process(self, result: dict) -> None:
         env = result.get("envelope") or {}
-        if not env:
-            return
+        if not env or self._closed_group(result):
+            return                                            # replayed rows from before a group was unlisted
         sender_id = env.get("sourceUuid") or env.get("sourceNumber")
         if not sender_id or self._author(env.get("sourceUuid"), env.get("sourceNumber")) == self.me:
             return                                            # our own (sync) messages

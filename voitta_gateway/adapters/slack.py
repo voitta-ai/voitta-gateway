@@ -407,6 +407,8 @@ class SlackAdapter(MessagingAdapter, CallAdapter):
                               ev.get("channel_type"))
         if kind == "direct" and sender["kind"] == "bot":
             return
+        if self.gw.closed(self.name, key, kind):
+            return                                         # unlisted channel: no files fetched or stored
         parts = [{"type": "text", "text": text}] if text else []
         if ev.get("files"):
             parts += await self._files(ev["files"])
