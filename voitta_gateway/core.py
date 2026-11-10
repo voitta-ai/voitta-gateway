@@ -84,6 +84,7 @@ class Gateway:
         self.outbox = None        # set by app wiring (outbox.Outbox)
         self.calls = None         # set by app wiring (calls.CallManager)
         self._speech_http: httpx.AsyncClient | None = None
+        self.start_tasks: list[asyncio.Task] = []
 
     def source(self, channel: str) -> str:
         return f"/gateway/{channel}"
@@ -437,8 +438,11 @@ class Gateway:
         return out
 
     async def start(self) -> None:
-        for a in list(self.messaging.values()) + [v for k, v in self.voice.items() if k not in self.messaging]:
-            asyncio.create_task(self._start_adapter(a), name=f"start-{a.name}")
+        # Kept, so an embedded gateway's stop() can wait out a startup still in
+        # flight instead of stopping an adapter that then finishes starting.
+        self.start_tasks = [asyncio.create_task(self._start_adapter(a), name=f"start-{a.name}")
+                            for a in list(self.messaging.values())
+                            + [v for k, v in self.voice.items() if k not in self.messaging]]
 
     async def _start_adapter(self, a) -> None:
         try:

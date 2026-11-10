@@ -64,7 +64,15 @@ class Embedded:
             self._tasks.append(asyncio.create_task(self._pump(callback, types, self._cursor(after))))
 
     def _cursor(self, after: str) -> int:
-        retval = self.gw.events.last_seq() if after == "now" else event_seq(after)
+        last = self.gw.events.last_seq()
+        retval = last if after == "now" else event_seq(after)
+        if retval > last:
+            # An id from another log (the data dir was reset or replaced): replay
+            # this one from the start, as the service's event API does, rather
+            # than wait for this log to grow past a number it never had.
+            log.warning("on_event: cursor %s is past the end of this log (%s); replaying from the start",
+                        after, last)
+            retval = 0
         return retval
 
     async def start(self) -> None:
@@ -88,6 +96,9 @@ class Embedded:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()
+        for t in self.gw.start_tasks:                       # a startup still in flight
+            t.cancel()
+        await asyncio.gather(*self.gw.start_tasks, return_exceptions=True)
         await self.gw.calls.stop()
         await self.gw.outbox.stop()
         for adapter in {*self.gw.messaging.values(), *self.gw.voice.values()}:
