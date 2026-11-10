@@ -1,0 +1,171 @@
+name: checks
+
+# One workflow on purpose: the release job `needs` the check job, so nothing is
+# tagged or published from a master commit whose checks failed or are still
+# running. Two push-triggered workflows have no ordering between them.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install
+        run: pip install -e '.[dev]'
+
+      # Known-vulnerability gate over the installed dependency set. pip-audit
+      # cannot audit this package itself (editable, not on PyPI), so it audits a
+      # freeze of everything else. --strict: a package it cannot resolve fails
+      # the build instead of being silently skipped.
+      - name: pip-audit
+        run: |
+          pip freeze --exclude-editable > /tmp/frozen.txt
+          pip install pip-audit
+          pip-audit --strict --disable-pip --no-deps -r /tmp/frozen.txt
+
+      # Offline tests. The *_real tests need a GPU and live services; they run by
+      # hand on the host that has them, never on a hosted runner.
+      - name: Tests
+        run: |
+          pytest -q \
+            --ignore=tests/test_ask_real.py \
+            --ignore=tests/test_speech_real.py
+
+      # The release workflow tags from voitta_gateway.__version__; the wheel is
+      # versioned from pyproject.toml. Two numbers for one release must agree.
+      - name: Versions agree
+        run: |
+          python3 - <<'EOF'
+          import re, sys, tomllib, pathlib
+          init = re.search(r'__version__ = "([^"]+)"',
+                           pathlib.Path("voitta_gateway/__init__.py").read_text()).group(1)
+          proj = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"]
+          if init != proj:
+              sys.exit(f"voitta_gateway.__version__ {init} != pyproject.toml version {proj}")
+          print("version", init)
+          EOF
+
+      # The file every new operator copies must still load.
+      - name: Example config loads
+        run: python3 -c "from voitta_gateway import config; config.load('gateway.example.yaml')"
+
+      # Structural pre-publish gate (ported from shmobster): token and key
+      # shapes, account ids, private IPs, internal domains. The name wordlist
+      # is private and stays off CI. Everything tracked is scanned except two
+      # trees whose fixtures match the structural shapes by construction:
+      # spec/ (JSON-pointer $refs are 40-character paths, the AWS-secret shape)
+      # and tests/ (fake ACIs end in a 12-digit group, the AWS-account shape).
+      - name: Sensitive-term gate (structural)
+        run: |
+          bash scripts/check-sensitive-terms.sh \
+            voitta_gateway/ voitta_ask/ voitta_speech/ examples/ deploy/ docs/ \
+            scripts/ .github/ README.md gateway.example.yaml .env.example pyproject.toml
+
+  # Tag-on-bump, as in shmobster. Feature PRs leave the version alone; a release
+  # is its own commit that moves voitta_gateway.__version__ (and pyproject.toml,
+  # which the check job holds equal). A version with no tag gets an image, then
+  # the tag and GitHub release, in that order: the tag is the record that the
+  # release finished, so a failed build leaves no tag and a rerun retries it all.
+  # The image is built here, not in a tag-triggered workflow: a tag pushed with
+  # GITHUB_TOKEN triggers no other workflow.
+  release:
+    needs: check
+    # One release at a time, never cancelled midway: two master pushes in quick
+    # succession would otherwise both see the version untagged and race to
+    # publish it from different commits. The second waits, then sees the tag.
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Is this version new?
+        id: version
+        run: |
+          version=$(python3 -c 'import re,pathlib; print(re.search(r"__version__ = \"([^\"]+)\"", pathlib.Path("voitta_gateway/__init__.py").read_text()).group(1))')
+          if [ -z "$version" ]; then
+            echo "::error::could not read __version__ from voitta_gateway/__init__.py"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already tagged; nothing to release."
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.version.outputs.new == 'true'
+
+      - uses: docker/login-action@v3
+        if: steps.version.outputs.new == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # A rerun after a failure past this point (the release step) must not
+      # rebuild: floating base images and unpinned packages would push different
+      # bytes under a version tag consumers may already have pulled.
+      - name: Image already pushed?
+        id: image
+        if: steps.version.outputs.new == 'true'
+        run: |
+          if docker manifest inspect "ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "image for this version exists; not rebuilding"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # linux/amd64 only: deploy/Dockerfile targets one x86_64 host. The tunnel
+      # stage builds RingRTC from source and is slow; the GitHub Actions cache
+      # keeps later releases from paying for it again.
+      - uses: docker/build-push-action@v6
+        if: steps.version.outputs.new == 'true' && steps.image.outputs.exists != 'true'
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Tag and release
+        if: steps.version.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Curated notes when the release deserved prose, generated from merged
+          # PR titles otherwise -- a release should never block on writing.
+          notes="docs/release-notes/v$VERSION.md"
+          if [ -f "$notes" ]; then
+            gh release create "v$VERSION" --title "v$VERSION" --notes-file "$notes" --target "$GITHUB_SHA"
+          else
+            gh release create "v$VERSION" --title "v$VERSION" --generate-notes --target "$GITHUB_SHA"
+          fi

@@ -289,7 +289,7 @@ def seq_slack_call() -> SVG:
 # ----------------------------------------------------------------------------
 def deployment_poc() -> SVG:
     s = SVG(1200, 720, "POC deployment on .212")
-    s.text(40, 34, "saturn (192.168.88.212) · Ubuntu 22.04 · RTX 3090 24 GB · 16 cores · 62 GB",
+    s.text(40, 34, "<gpu-host> · Ubuntu 22.04 · RTX 3090 24 GB · 16 cores · 62 GB",
            size=15, weight="bold", anchor="start")
     s.rect(30, 46, 830, 640, "host", rx=14, sw=2)
 
@@ -311,7 +311,7 @@ def deployment_poc() -> SVG:
     s.box(460, 390, 370, 100, "signal-call-tunnel", ["RingRTC 2.65.1: has CVE-2026-113380",
           "(its patches do not apply to >= 2.72)", "not on PATH: only the gateway uses it"],
           kind="voice", title_size=13, status="partial")
-    s.box(60, 540, 770, 70, "~/.local/share/signal-cli · account +1 212 707 1132 (primary device)",
+    s.box(60, 540, 770, 70, "~/.local/share/signal-cli · account +1 555 123 4567 (primary device)",
           ["one daemon at a time: manhattan-logic's OR the gateway's (switch: stop one, start the other)"],
           kind="config", title_size=13)
 
