@@ -298,7 +298,7 @@ def build() -> Path:
     ])
     code(doc, """
 adapters:
-  signal: {account: "+12127071132", calls: true, route: ask, groups: mention}
+  signal: {account: "+15551234567", calls: true, route: ask, groups: mention}
   slack:  {bot_token_secret: SLACK_BOT_TOKEN, app_token_secret: SLACK_APP_TOKEN}
   phone:  {api_key_secret: TELNYX_API_KEY, public_key_secret: TELNYX_PUBLIC_KEY,
            numbers: ["+15550002222"], public_base_url: "https://gw.example.com", codec: L16}
@@ -405,7 +405,7 @@ GET  /v1/channels · /v1/identities/{person_id} · /v1/held · /v1/optouts
  "time": "2026-11-08T21:14:03.120Z",        // when it happened on the platform
  "ingesttime": "2026-11-08T21:14:03.131Z",  // when the gateway got it
  "data": {"call_id": "call_01a1bddd...", "channel": "signal", "direction": "outbound",
-          "from": "+12127071132", "to": "+15551230000", "person_id": null,
+          "from": "+15551234567", "to": "+15551230000", "person_id": null,
           "reason": "ask_done", "duration_s": 19.0, "answered": true}}
 """)
     bullets(doc, [
