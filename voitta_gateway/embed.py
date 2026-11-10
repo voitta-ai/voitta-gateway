@@ -76,6 +76,11 @@ class Embedded:
         return retval
 
     async def start(self) -> None:
+        if self._started:
+            # A second start would add a pump per subscription, another adapter
+            # startup and another outbox worker per channel: duplicate deliveries
+            # and two workers racing over one queued send.
+            raise RuntimeError("embedded gateway is already started; stop() it first")
         # Cursors are fixed before any adapter runs: adapters emit events as soon
         # as they start (channel.up, and Signal replays unprocessed envelopes), and
         # a pump that read "now" after that would skip them.
@@ -96,6 +101,7 @@ class Embedded:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()
+        self._started = False
         for t in self.gw.start_tasks:                       # a startup still in flight
             t.cancel()
         await asyncio.gather(*self.gw.start_tasks, return_exceptions=True)
