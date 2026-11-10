@@ -1,5 +1,9 @@
 name: checks
 
+# One workflow on purpose: the release job `needs` the check job, so nothing is
+# tagged or published from a master commit whose checks failed or are still
+# running. Two push-triggered workflows have no ordering between them.
+
 on:
   pull_request:
   push:
@@ -67,3 +71,80 @@ jobs:
           bash scripts/check-sensitive-terms.sh \
             voitta_gateway/ voitta_ask/ voitta_speech/ examples/ deploy/ docs/ \
             README.md gateway.example.yaml .env.example
+
+  # Tag-on-bump, as in shmobster. Feature PRs leave the version alone; a release
+  # is its own commit that moves voitta_gateway.__version__ (and pyproject.toml,
+  # which the check job holds equal). A version with no tag gets an image, then
+  # the tag and GitHub release, in that order: the tag is the record that the
+  # release finished, so a failed build leaves no tag and a rerun retries it all.
+  # The image is built here, not in a tag-triggered workflow: a tag pushed with
+  # GITHUB_TOKEN triggers no other workflow.
+  release:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Is this version new?
+        id: version
+        run: |
+          version=$(python3 -c 'import re,pathlib; print(re.search(r"__version__ = \"([^\"]+)\"", pathlib.Path("voitta_gateway/__init__.py").read_text()).group(1))')
+          if [ -z "$version" ]; then
+            echo "::error::could not read __version__ from voitta_gateway/__init__.py"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already tagged; nothing to release."
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.version.outputs.new == 'true'
+
+      - uses: docker/login-action@v3
+        if: steps.version.outputs.new == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # linux/amd64 only: deploy/Dockerfile targets one x86_64 host. The tunnel
+      # stage builds RingRTC from source and is slow; the GitHub Actions cache
+      # keeps later releases from paying for it again. Pushing the same version
+      # tag again on a rerun overwrites it with the same build.
+      - uses: docker/build-push-action@v6
+        if: steps.version.outputs.new == 'true'
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Tag and release
+        if: steps.version.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Curated notes when the release deserved prose, generated from merged
+          # PR titles otherwise -- a release should never block on writing.
+          notes="docs/release-notes/v$VERSION.md"
+          if [ -f "$notes" ]; then
+            gh release create "v$VERSION" --title "v$VERSION" --notes-file "$notes" --target "$GITHUB_SHA"
+          else
+            gh release create "v$VERSION" --title "v$VERSION" --generate-notes --target "$GITHUB_SHA"
+          fi

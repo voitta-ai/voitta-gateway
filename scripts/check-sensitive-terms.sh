@@ -69,6 +69,16 @@ internal-domain|[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.(internal|corp|intranet)
 
 status=0
 
+for target in "$@"; do
+  if [ ! -r "$target" ]; then
+    echo "error: cannot read scan target $target" >&2
+    exit 2
+  fi
+done
+patterns_file=$(mktemp) || { echo "error: mktemp failed" >&2; exit 2; }
+errfile=$(mktemp) || { echo "error: mktemp failed" >&2; exit 2; }
+trap 'rm -f "$patterns_file" "$errfile"' EXIT
+
 # Set to "-i" by the wordlist pass: names are written in every casing
 # (Foo, foo, FOO), so a case-sensitive term match misses most of them.
 # Structural patterns stay case-SENSITIVE on purpose - AKIA, sk-, xoxb-,
@@ -79,8 +89,15 @@ check_pattern() {
   label="$1"
   regex="$2"
   shift 2
-  # grep -rEn over the paths; -I skips binaries. Suppress the "no match" exit.
-  matches=$(grep -rEnI $CASE_FLAG "$regex" "$@" 2>/dev/null)
+  # grep -rEn over the paths; -I skips binaries. Exit 1 is "no match"; anything
+  # above it (unreadable path, bad regex) is a scan that did not happen, and a
+  # gate must not report that as clean.
+  matches=$(grep -rEnI $CASE_FLAG -e "$regex" "$@" 2>"$errfile")
+  rc=$?
+  if [ "$rc" -gt 1 ]; then
+    echo "error: scan failed for [$label]: $(cat "$errfile")" >&2
+    exit 2
+  fi
   if [ -n "$matches" ]; then
     echo "SENSITIVE [$label]:" >&2
     echo "$matches" | sed 's/^/  /' >&2
@@ -92,13 +109,12 @@ check_pattern() {
 echo "$STRUCTURAL" | while IFS='|' read -r label regex; do
   [ -z "$label" ] && continue
   echo "${label}|${regex}"
-done > /tmp/.gateway_structural.$$
+done > "$patterns_file"
 # (piping into a while-subshell loses $status in bash 3.2; iterate via a temp file)
 while IFS='|' read -r label regex; do
   [ -z "$label" ] && continue
   check_pattern "$label" "$regex" "$@"
-done < /tmp/.gateway_structural.$$
-rm -f /tmp/.gateway_structural.$$
+done < "$patterns_file"
 
 # 2) optional private wordlist (client/account names etc.)
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
