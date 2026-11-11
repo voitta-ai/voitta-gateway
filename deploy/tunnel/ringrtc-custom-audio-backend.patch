@@ -11,7 +11,7 @@ index eb0ed21..3632b24 100644
          audio_encoder_config: AudioEncoderConfig {
              initial_packet_size_ms: args
 diff --git a/src/rust/src/webrtc/audio_device_module.rs b/src/rust/src/webrtc/audio_device_module.rs
-index 86f1271..6fd5892 100644
+index 86f1271..9de6e96 100644
 --- a/src/rust/src/webrtc/audio_device_module.rs
 +++ b/src/rust/src/webrtc/audio_device_module.rs
 @@ -34,7 +34,7 @@ use crate::{
@@ -23,7 +23,7 @@ index 86f1271..6fd5892 100644
      },
  };
  
-@@ -1298,6 +1298,221 @@ impl Drop for LogDisableGuard {
+@@ -1298,6 +1298,234 @@ impl Drop for LogDisableGuard {
      }
  }
  
@@ -31,23 +31,26 @@ index 86f1271..6fd5892 100644
 +///
 +/// Holds the opaque callback value WebRTC registers through
 +/// `SetCallbackIndirect` and exposes only safe PCM exchange. Until WebRTC has
-+/// registered it, playout yields no samples and recorded audio is dropped.
-+/// Cloning yields another handle to the same transport.
++/// registered it, and from the moment the module begins shutting down, playout
++/// yields no samples and recorded audio is dropped. Every call into WebRTC is
++/// made while holding the lock, so calls are serialized, and teardown, which
++/// clears the value under the same lock, waits for an in-flight call before the
++/// module goes away. A clone kept past `run` is therefore inert, never
++/// dangling. Cloning yields another handle to the same transport.
 +#[derive(Clone)]
 +pub struct AudioTransport {
 +    inner: Arc<Mutex<Option<usize>>>,
 +}
 +
 +impl AudioTransport {
-+    fn callback(&self) -> Option<usize> {
-+        self.inner.lock().ok().and_then(|guard| *guard)
-+    }
-+
 +    /// Pull up to `samples` frames of playout audio (audio *received* from the
 +    /// remote peer) from WebRTC. The returned vector may be shorter than
 +    /// `samples` (including empty) when WebRTC has nothing to play.
 +    pub fn pull_playout(&self, samples: usize, channels: u32, samples_per_sec: u32) -> Vec<i16> {
-+        match self.callback() {
++        let Ok(guard) = self.inner.lock() else {
++            return Vec::new();
++        };
++        match *guard {
 +            Some(callback) => {
 +                Worker::need_more_play_data(callback, samples, channels, samples_per_sec).data
 +            }
@@ -63,7 +66,10 @@ index 86f1271..6fd5892 100644
 +        samples_per_sec: u32,
 +        total_delay: Duration,
 +    ) {
-+        if let Some(callback) = self.callback() {
++        let Ok(guard) = self.inner.lock() else {
++            return;
++        };
++        if let Some(callback) = *guard {
 +            Worker::recorded_data_is_available(
 +                callback,
 +                samples,
@@ -232,6 +238,13 @@ index 86f1271..6fd5892 100644
 +            }
 +        }
 +
++        // Invalidate the callback before the module, and with it the foreign
++        // transport, goes away. Taking the lock waits out a call in progress;
++        // any AudioTransport clone used afterwards finds None and does nothing.
++        if let Ok(mut guard) = callback.lock() {
++            *guard = None;
++        }
++
 +        // Make sure the device stops even if the event channel closed without a
 +        // Terminate, then wait for its loop to unwind.
 +        let _ = control_sender.send(AudioControlEvent::Terminate);
@@ -245,7 +258,7 @@ index 86f1271..6fd5892 100644
  fn log_c_str(s: &CStr) {
      if PAUSE_LOGGING.load(Ordering::SeqCst) {
          return;
-@@ -1316,7 +1531,7 @@ fn log_c_str(s: &CStr) {
+@@ -1316,7 +1544,7 @@ fn log_c_str(s: &CStr) {
  }
  
  impl AudioDeviceModule {
@@ -254,7 +267,7 @@ index 86f1271..6fd5892 100644
          if !log_enabled()
              && let Err(e) = set_logging(LogLevel::Normal, Some(log_c_str))
          {
-@@ -1328,14 +1543,24 @@ impl AudioDeviceModule {
+@@ -1328,14 +1556,24 @@ impl AudioDeviceModule {
          let (sender, receiver) = mpsc::channel();
          let (started_sender, started_receiver) = mpsc::channel();
          let (playout_delay_sender, playout_delay_receiver) = mpsc::channel();
@@ -287,7 +300,7 @@ index 86f1271..6fd5892 100644
  
          // Ensure the thread started correctly
  
-@@ -1835,7 +2060,7 @@ mod audio_device_module_tests {
+@@ -1835,7 +2073,7 @@ mod audio_device_module_tests {
              Some(|cstr| println!("{:?}", cstr)),
          )
          .expect("failed to set logging");
