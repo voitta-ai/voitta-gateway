@@ -30,8 +30,9 @@ python examples/echo_agent.py                                   # a voice agent 
 
 Production is one Linux host via [deploy/](deploy/) (Docker Compose: gateway + signal-cli +
 PulseAudio in one container, Caddy for the public ingress). Signal voice calls need
-signal-call-tunnel, which only the `with-signal-calls` build target includes; it is experimental
-and does not build yet (see the Dockerfile header).
+signal-call-tunnel, which only the `with-signal-calls` build target includes; it is experimental.
+The tunnel is built against RingRTC >= 2.72 with the patches in `deploy/tunnel/` (see the
+Dockerfile header).
 First live tests: [docs/SPIKE.md](docs/SPIKE.md).
 
 The service needs the `service` extra (FastAPI, uvicorn): `pip install "voitta-gateway[service]"`.

@@ -1,0 +1,41 @@
+diff --git a/src/rust/src/webrtc/audio_device_module.rs b/src/rust/src/webrtc/audio_device_module.rs
+index 2078d4f..86f1271 100644
+--- a/src/rust/src/webrtc/audio_device_module.rs
++++ b/src/rust/src/webrtc/audio_device_module.rs
+@@ -415,6 +415,12 @@ impl Worker {
+         query_device(self, device_type, device_id)
+     }
+ 
++    /// Whether `RINGRTC_NO_VOICE_PROCESSING` is set, which skips macOS
++    /// VoiceProcessingIO (it hangs with virtual audio drivers).
++    fn no_voice_processing() -> bool {
++        std::env::var("RINGRTC_NO_VOICE_PROCESSING").is_ok()
++    }
++
+     fn init_playout(&mut self) -> anyhow::Result<()> {
+         self.should_reinit_play = true;
+         let out_device = self
+@@ -427,7 +433,11 @@ impl Worker {
+             .rate(SAMPLE_FREQUENCY)
+             .channels(2)
+             .layout(cubeb::ChannelLayout::STEREO)
+-            .prefs(StreamPrefs::VOICE)
++            .prefs(if Self::no_voice_processing() {
++                StreamPrefs::NONE
++            } else {
++                StreamPrefs::VOICE
++            })
+             .take();
+         let mut builder = cubeb::StreamBuilder::<OutFrame>::new();
+         let min_latency = self.ctx.min_latency(&params).unwrap_or_else(|e| {
+@@ -586,7 +596,9 @@ impl Worker {
+             .rate(SAMPLE_FREQUENCY)
+             .channels(NUM_CHANNELS)
+             .layout(cubeb::ChannelLayout::MONO);
+-        let params = if cfg!(not(target_os = "macos")) || self.voice_processing_enabled {
++        let params = if !Self::no_voice_processing()
++            && (cfg!(not(target_os = "macos")) || self.voice_processing_enabled)
++        {
+             builder.prefs(StreamPrefs::VOICE)
+         } else {
+             builder

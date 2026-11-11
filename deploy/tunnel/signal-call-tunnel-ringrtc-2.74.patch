@@ -1,0 +1,162 @@
+diff --git a/signal-call-tunnel/src/main.rs b/signal-call-tunnel/src/main.rs
+index 342c8a7..ad956d1 100644
+--- a/signal-call-tunnel/src/main.rs
++++ b/signal-call-tunnel/src/main.rs
+@@ -172,10 +172,10 @@ fn main() -> Result<()> {
+             std::thread::sleep(Duration::from_millis(100));
+             if pcf
+                 .get_audio_playout_devices()
+-                .is_ok_and(|d| !d.is_empty())
++                .is_ok_and(|d| !d.list.is_empty())
+                 && pcf
+                     .get_audio_recording_devices()
+-                    .is_ok_and(|d| !d.is_empty())
++                    .is_ok_and(|d| !d.list.is_empty())
+             {
+                 break;
+             }
+@@ -183,28 +183,29 @@ fn main() -> Result<()> {
+ 
+         // Select virtual devices by name.
+         //
+-        // We can't use set_audio_*_device_by_id() because the ADM matches on the
+-        // cubeb unique_id (e.g. "signal_input2ch_UID"), not the friendly name we
+-        // know ("signal_input").  Instead, enumerate and find the index by name.
++        // The ADM matches on the cubeb unique_id (e.g. "signal_input2ch_UID"),
++        // not the friendly name we know ("signal_input"), so find the device by
++        // name and select it by its unique_id. RingRTC >= 2.72 selects by id
++        // only; the request id answers a promise nothing here waits on.
+         let input_name = virtual_audio.input_source();
+         let recording_devices = pcf.get_audio_recording_devices()?;
+-        let recording_index = recording_devices
++        let recording = recording_devices
++            .list
+             .iter()
+-            .position(|d| d.name == input_name)
+-            .ok_or_else(|| anyhow::anyhow!("recording device '{}' not found", input_name))?
+-            as u16;
+-        pcf.set_audio_recording_device(recording_index)?;
+-        info!("Selected recording device: index={}, name={}", recording_index, input_name);
++            .find(|d| d.name == input_name)
++            .ok_or_else(|| anyhow::anyhow!("recording device '{}' not found", input_name))?;
++        pcf.set_audio_recording_device_by_id(&recording.unique_id, 0)?;
++        info!("Selected recording device: name={}", input_name);
+ 
+         let output_name = virtual_audio.output_sink();
+         let playout_devices = pcf.get_audio_playout_devices()?;
+-        let playout_index = playout_devices
++        let playout = playout_devices
++            .list
+             .iter()
+-            .position(|d| d.name == output_name)
+-            .ok_or_else(|| anyhow::anyhow!("playout device '{}' not found", output_name))?
+-            as u16;
+-        pcf.set_audio_playout_device(playout_index)?;
+-        info!("Selected playout device: index={}, name={}", playout_index, output_name);
++            .find(|d| d.name == output_name)
++            .ok_or_else(|| anyhow::anyhow!("playout device '{}' not found", output_name))?;
++        pcf.set_audio_playout_device_by_id(&playout.unique_id, 0)?;
++        info!("Selected playout device: name={}", output_name);
+     }
+ 
+     // Create platform with our trait implementations
+@@ -271,18 +272,12 @@ fn main() -> Result<()> {
+                 let peer_id = PeerId::from(pid.as_str());
+                 active_peer_id = peer_id.clone();
+                 info!("Creating outgoing call: call_id={}, peer_id={}", cid, pid);
+-                if let Err(e) = call_manager.create_outgoing_call(
++                call_manager.create_outgoing_call(
+                     peer_id,
+                     call_id,
+                     CallMediaType::Audio,
+                     local_device_id,
+-                ) {
+-                    error!("Failed to create outgoing call: {}", e);
+-                    control.writer.send_line(&format!(
+-                        r#"{{"type":"error","message":"failed to create outgoing call: {}"}}"#,
+-                        e
+-                    ));
+-                }
++                );
+             }
+             ControlMessage::Proceed {
+                 call_id: cid,
+@@ -338,15 +333,7 @@ fn main() -> Result<()> {
+                     ..Default::default()
+                 };
+ 
+-                if let Err(e) =
+-                    call_manager.proceed(call_id, call_context, call_config, None)
+-                {
+-                    error!("Failed to proceed: {}", e);
+-                    control.writer.send_line(&format!(
+-                        r#"{{"type":"error","message":"failed to proceed: {}"}}"#,
+-                        e
+-                    ));
+-                }
++                call_manager.proceed(call_id, call_context, call_config, None);
+             }
+             ControlMessage::ReceivedOffer {
+                 call_id: cid,
+@@ -382,13 +369,11 @@ fn main() -> Result<()> {
+                     receiver_identity_key,
+                 };
+ 
+-                if let Err(e) = call_manager.received_offer(
++                call_manager.received_offer(
+                     peer_id,
+                     call_id,
+                     received,
+-                ) {
+-                    error!("Failed to process received offer: {}", e);
+-                }
++                );
+             }
+             ControlMessage::ReceivedAnswer {
+                 opaque,
+@@ -413,13 +398,11 @@ fn main() -> Result<()> {
+                     receiver_identity_key,
+                 };
+ 
+-                if let Err(e) = call_manager.received_answer(
++                call_manager.received_answer(
+                     active_peer_id.clone(),
+                     call_id,
+                     received,
+-                ) {
+-                    error!("Failed to process received answer: {}", e);
+-                }
++                );
+             }
+             ControlMessage::ReceivedIce { candidates, sender_device_id } => {
+                 debug!("Received {} ICE candidates", candidates.len());
+@@ -436,25 +419,19 @@ fn main() -> Result<()> {
+                     sender_device_id: sender_device_id as DeviceId,
+                 };
+ 
+-                if let Err(e) = call_manager.received_ice(
++                call_manager.received_ice(
+                     active_peer_id.clone(),
+                     call_id,
+                     received,
+-                ) {
+-                    error!("Failed to process received ICE: {}", e);
+-                }
++                );
+             }
+             ControlMessage::Accept => {
+                 info!("Accepting call");
+-                if let Err(e) = call_manager.accept_call(call_id) {
+-                    error!("Failed to accept call: {}", e);
+-                }
++                call_manager.accept_call(call_id);
+             }
+             ControlMessage::Hangup => {
+                 info!("Hanging up");
+-                if let Err(e) = call_manager.hangup() {
+-                    error!("Failed to hangup: {}", e);
+-                }
++                call_manager.hangup();
+                 // Give time for hangup to be sent
+                 std::thread::sleep(Duration::from_millis(500));
+                 break;
