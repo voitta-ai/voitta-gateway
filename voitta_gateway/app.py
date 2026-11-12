@@ -52,13 +52,13 @@ async def run(cfg: Config) -> None:
     gw.outbox.start()
     servers = []
     host, port = host_port(cfg.listen.api)
-    servers.append(_Server(uvicorn.Config(api, host=host, port=port, log_level="info",
+    servers.append(_Server(uvicorn.Config(api, host=host, port=port, log_level="info", access_log=False,
                                                  proxy_headers=False)))
     if ingress is not None:
         if not cfg.listen.ingress:
             raise ValueError("listen.ingress is required when the phone adapter is on")
         ih, ip = host_port(cfg.listen.ingress)
-        servers.append(_Server(uvicorn.Config(ingress, host=ih, port=ip, log_level="info",
+        servers.append(_Server(uvicorn.Config(ingress, host=ih, port=ip, log_level="info", access_log=False,
                                                      proxy_headers=True, ws_max_size=2 ** 22)))
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):    # SIGHUP: the terminal / screen closed
