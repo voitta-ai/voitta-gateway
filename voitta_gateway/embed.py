@@ -122,6 +122,8 @@ class Embedded:
                 cursor = event_seq(e["id"])
                 if not matches(e["type"], self._patterns) or (types and not matches(e["type"], types)):
                     continue
+                if self.gw._agent(self.consumer) and e["data"].get("addressed_to") not in (None, self.consumer):
+                    continue                              # another agent's, as the service's stream filters it
                 try:
                     await callback(e)
                 except Exception:

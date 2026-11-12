@@ -72,7 +72,12 @@ paths:
         Replies go back to the conversation they answer: `to: {conversation_id}`. A `person_id`
         target is for conversations the agent starts itself; the gateway then picks a channel.
         Derive `idempotency_key` from the event being answered (e.g. `reply:evt_42`).
-        Outcome: `message.status` events (queued -> sent -> delivered -> read, or failed).
+        Outcome: `message.status` events (queued -> sent -> delivered -> read, or failed), addressed
+        to the sending consumer. `to: {conversation: <label>}` posts into a mapped group that has had
+        no inbound traffic. A send into an unlisted group, a group outside the consumer's map entries,
+        or a direct conversation another consumer serves is 403 (`not_listed`, `forbidden_conversation`);
+        a direct conversation with no messages yet may be started by any consumer. A person reached by
+        another address (a number for an ACI) lands in their existing direct conversation.
       x-scope: messages:send
       requestBody:
         required: true
@@ -564,7 +569,8 @@ components:
                 unknown_conversation, unknown_message, unknown_call, unknown_held, unknown_route,
                 unknown_attachment, bad_target, bad_reply_to, bad_digits, bad_emoji, empty,
                 no_route, no_voice, opted_out, unsupported, not_ours, not_sent_yet, bad_state,
-                agent_not_connected, call_ended, emergency_number_blocked
+                agent_not_connected, call_ended, emergency_number_blocked,
+                forbidden_conversation, not_listed, not_yours (403: outside the consumer's conversations)
             message: {type: string}
 
     ChannelName: {type: string, enum: [signal, slack, phone]}
@@ -694,6 +700,10 @@ components:
           required: [conversation_id]
           properties:
             conversation_id: {type: string, pattern: "^conv_"}
+        - type: object
+          required: [conversation]
+          properties:
+            conversation: {type: string, description: "label of a group in gateway.yaml conversations"}
         - type: object
           required: [person_id]
           properties:

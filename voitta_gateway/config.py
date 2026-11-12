@@ -6,6 +6,7 @@ variable (or a line in the optional env file); `Config.secret()` resolves them.
 from __future__ import annotations
 
 import os
+import re
 import unicodedata
 from pathlib import Path
 from typing import Literal
@@ -25,6 +26,14 @@ def clean_address(value: str) -> str:
     here is the fix."""
     retval = "".join(ch for ch in value if unicodedata.category(ch) != "Cf").strip()
     return retval
+
+
+_ACCOUNT = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+
+def is_account(address: str) -> bool:
+    """A Signal account id (ACI, a UUID), as opposed to a phone number -- even one made of digits."""
+    return bool(_ACCOUNT.fullmatch(address.strip()))
 
 
 class MediaFormat(BaseModel):
@@ -61,6 +70,7 @@ class SignalConfig(BaseModel):
     groups: Literal["mention", "all", "ignore"] = "mention"
     calls: bool = False
     route: str | None = None
+    direct_consumer: str | None = None              # gets 1:1 messages; unset = every consumer
     attachments_dir: str | None = None              # where signal-cli saves attachments
     pulse_latency_ms: int = 40
 
@@ -89,6 +99,7 @@ class SlackConfig(BaseModel):
     channels: Literal["mention", "all"] = "mention"  # DMs always count; @here/@channel count too
     bots: Literal["ignore", "mention"] = "mention"   # other bots' posts: dropped, or only when they mention us
     min_interval_s: float = 1.1                     # per channel, Slack allows ~1 msg/s
+    direct_consumer: str | None = None              # gets DMs; unset = every consumer
     calls: SlackCalls | None = None
 
 
@@ -121,6 +132,8 @@ class Consumer(BaseModel):
     token_secret: str
     scopes: list[str] = ["events:read"]             # events:read messages:send calls:control admin
     events: list[str] = ["*"]                       # type patterns, e.g. message.*
+    names: list[str] = []                           # name keywords that address this consumer
+    label: str | None = None                        # prefixed to its outbound text ("label: ...")
 
 
 class Person(BaseModel):
@@ -144,6 +157,10 @@ class Conversation(BaseModel):
     group and it is a full member at once, with no pending invite to decline."""
     channel: Literal["signal", "slack"]
     key: str                                        # signal: group id; slack: channel id
+    consumers: list[str] = []                       # who serves it: gets its events, may act there;
+                                                    # the first is the default addressee (#1 item 3).
+                                                    # The label is also the send alias
+                                                    # (`to: {conversation: label}`).
 
     @field_validator("key")
     @classmethod
@@ -200,6 +217,13 @@ class Config(BaseModel):
         return v
 
     def model_post_init(self, __context) -> None:
+        for label, c in self.conversations.items():
+            for name in c.consumers:
+                if name not in self.consumers:
+                    raise ValueError(f"conversation {label}: consumer {name!r} is not defined under consumers")
+        for name, a in (("signal", self.adapters.signal), ("slack", self.adapters.slack)):
+            if a and a.direct_consumer and a.direct_consumer not in self.consumers:
+                raise ValueError(f"adapters.{name}.direct_consumer {a.direct_consumer!r} is not defined under consumers")
         slack_calls = self.adapters.slack.calls if self.adapters.slack else None
         for a in (self.adapters.signal, self.adapters.phone, slack_calls):
             if a and a.route and a.route not in self.routes:

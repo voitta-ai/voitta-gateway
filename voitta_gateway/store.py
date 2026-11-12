@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS conversations (
     last_seq INTEGER NOT NULL DEFAULT 0,
     UNIQUE (channel, platform_key)
 );
+CREATE TABLE IF NOT EXISTS aliases (    -- another address of a direct conversation's peer
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    PRIMARY KEY (channel, address)
+);
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
@@ -40,7 +46,8 @@ CREATE TABLE IF NOT EXISTS messages (
     thread_platform_id TEXT,
     status TEXT NOT NULL,
     error TEXT,
-    created REAL NOT NULL
+    created REAL NOT NULL,
+    consumer TEXT                    -- who sent it (out), or whom it was addressed to (in)
 );
 CREATE INDEX IF NOT EXISTS messages_platform ON messages (conversation_id, platform_id);
 CREATE INDEX IF NOT EXISTS messages_platform_only ON messages (platform_id);
@@ -127,6 +134,8 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.executescript(SCHEMA)
+        if "consumer" not in {r["name"] for r in self.q("PRAGMA table_info(messages)")}:
+            self.x("ALTER TABLE messages ADD COLUMN consumer TEXT")      # databases from before #1 item 3
         self.files = path.parent / "files"
         self.files.mkdir(parents=True, exist_ok=True)
 
@@ -150,6 +159,29 @@ class Store:
                cid, channel, key, kind)
         return cid
 
+    def find_conversation(self, channel: str, platform_key: dict) -> str | None:
+        row = self.one("SELECT id FROM conversations WHERE channel=? AND platform_key=?",
+                       channel, json.dumps(platform_key, sort_keys=True))
+        return row["id"] if row else None
+
+    def alias(self, channel: str, address: str) -> str | None:
+        row = self.one("SELECT conversation_id FROM aliases WHERE channel=? AND address=?", channel, address)
+        return row["conversation_id"] if row else None
+
+    def drop_alias(self, channel: str, address: str) -> None:
+        self.x("DELETE FROM aliases WHERE channel=? AND address=?", channel, address)
+
+    def rekey(self, cid: str, platform_key: dict) -> None:
+        self.x("UPDATE conversations SET platform_key=? WHERE id=?", json.dumps(platform_key, sort_keys=True), cid)
+
+    def aci_aliases(self, channel: str, cid: str) -> list[str]:
+        """Account ids (not numbers) aliased to a conversation."""
+        return [r["address"] for r in self.q("SELECT address FROM aliases WHERE channel=? AND conversation_id=?"
+                                             " AND address NOT LIKE '+%'", channel, cid)]
+
+    def set_alias(self, channel: str, address: str, cid: str) -> None:
+        self.x("INSERT OR REPLACE INTO aliases VALUES (?,?,?)", channel, address, cid)
+
     def conversation_row(self, cid: str) -> sqlite3.Row | None:
         return self.one("SELECT * FROM conversations WHERE id=?", cid)
 
@@ -161,11 +193,12 @@ class Store:
 
     # ---------------- messages ----------------
     def add_message(self, conversation_id: str, direction: str, platform_id: str | None,
-                    status: str, thread: str | None = None, mid: str | None = None) -> str:
+                    status: str, thread: str | None = None, mid: str | None = None,
+                    consumer: str | None = None) -> str:
         mid = mid or new_id("msg")
         self.x("INSERT INTO messages (id, conversation_id, direction, platform_id, thread_platform_id,"
-               " status, created) VALUES (?,?,?,?,?,?,?)",
-               mid, conversation_id, direction, platform_id, thread, status, time.time())
+               " status, created, consumer) VALUES (?,?,?,?,?,?,?,?)",
+               mid, conversation_id, direction, platform_id, thread, status, time.time(), consumer)
         return mid
 
     def message(self, mid: str) -> sqlite3.Row | None:

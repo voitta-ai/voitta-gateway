@@ -17,11 +17,12 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
 
-from ..config import SignalConfig, host_port
+from ..config import SignalConfig, host_port, is_account
 from .base import CallAdapter, Inbound, MessagingAdapter, PermanentError, Unsupported
 
 log = logging.getLogger(__name__)
@@ -410,7 +411,12 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
         return {"groupId": key["group"]} if "group" in key else {"recipient": [key["peer"]]}
 
     def direct_key(self, address: str) -> dict:
-        return {"peer": address}
+        a = address.strip()
+        if is_account(a):
+            return {"peer": a.lower()}
+        if re.fullmatch(r"\+?[\d\s\-().]{6,}", a):
+            a = "+" + re.sub(r"\D", "", a)               # one spelling per number: "+1 555-..." is "+1555..."
+        return {"peer": a}
 
     async def _rpc(self, method: str, **params):
         if not self.rpc:
