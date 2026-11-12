@@ -179,7 +179,8 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
     name = "signal"
     capabilities = {"text": True, "attachments": True, "reactions": True, "edit": True,
                     "delete": True, "typing": True, "threads": False, "receipts": ["delivered", "read"],
-                    "max_attachment_mb": 100, "max_text_bytes": 2000, "styles": True}
+                    "max_attachment_mb": 100, "max_text_bytes": 2000, "styles": True,
+                    "mentions": True}
     min_interval_s = 0.3
 
     def __init__(self, cfg: SignalConfig, port_factory=None):
@@ -455,10 +456,11 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
         return author, int(ts)
 
     @staticmethod
-    def _text(parts: list[dict]) -> tuple[str, list[str]]:
-        """Text parts joined with newlines, and their style ranges as signal-cli takes them
-        (start:length:STYLE, UTF-16 code units, shifted by where each part lands)."""
-        texts, styles, at = [], [], 0
+    def _text(parts: list[dict]) -> tuple[str, list[str], list[str]]:
+        """Text parts joined with newlines, and their style ranges and mentions as signal-cli takes
+        them (start:length:STYLE and start:length:recipient, UTF-16 code units, shifted by where
+        each part lands)."""
+        texts, styles, mentions, at = [], [], [], 0
         for p in parts:
             if p.get("type") != "text":
                 continue
@@ -466,14 +468,17 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
                 at += 1                                       # the joining newline
             texts.append(p["text"])
             styles += [f"{at + st['start']}:{st['length']}:{st['style']}" for st in p.get("styles") or []]
+            mentions += [f"{at + m['start']}:{m['length']}:{m['id']}" for m in p.get("mentions") or []]
             at += len(p["text"].encode("utf-16-le")) // 2
-        return "\n".join(texts), styles
+        return "\n".join(texts), styles, mentions
 
     async def send(self, key, parts, reply_to):
-        text, styles = self._text(parts)
+        text, styles, mentions = self._text(parts)
         params = {**self._to(key), "message": text}
         if styles:
             params["textStyle"] = styles
+        if mentions:
+            params["mention"] = mentions
         files = []
         for p in parts:
             if p.get("type") == "file":
@@ -490,8 +495,10 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
 
     async def edit(self, key, platform_id, parts):
         _, ts = self._split_ts(platform_id)
-        text, styles = self._text(parts)
+        text, styles, mentions = self._text(parts)
         extra = {"textStyle": styles} if styles else {}
+        if mentions:
+            extra["mention"] = mentions
         self._check_results(await self._rpc("send", **self._to(key), message=text, editTimestamp=ts, **extra))
 
     async def delete(self, key, platform_id):
