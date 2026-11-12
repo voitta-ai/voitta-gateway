@@ -161,7 +161,8 @@ class Gateway:
             return []
         return list(self.cfg.conversations[label].consumers) or None
 
-    def addressing(self, channel: str, key: dict, kind: str, text: str = "", target=None) -> dict:
+    def addressing(self, channel: str, key: dict, kind: str, text: str = "", target=None,
+                   about: bool = False) -> dict:
         """Who an inbound event is for, so a shared account's consumers each see only their own.
 
         In order: the consumer that sent the message being replied to, reacted to or edited (on
@@ -179,7 +180,11 @@ class Gateway:
             out["addressed_to"] = ""
             return out
         # Our message's sender, or the consumer a human's message went to (edits, deletes, reactions)
-        if target is not None and target["consumer"] in serving:
+        # A reply or quote follows the agent that sent the quoted message. An edit, delete or
+        # reaction (`about`) also follows a human's message to the consumer it went to; a new
+        # message quoting a human does not, so the name said in it still decides.
+        if (target is not None and target["consumer"] in serving
+                and (target["direction"] == "out" or about)):
             out["addressed_to"] = target["consumer"]
             return out
         best = None
@@ -262,11 +267,13 @@ class Gateway:
         if self.closed(m.channel, m.conversation_key, m.kind):
             return None                                           # policy: unlisted group
         number = m.sender.get("number") if m.kind == "direct" else None
-        if number and not self.store.alias(m.channel, self._peer(m.conversation_key) or ""):
-            started = (self.store.alias(m.channel, number)
-                       or self.store.find_conversation(m.channel, self.messaging[m.channel].direct_key(number)))
-            if started:                                           # we started it under their number
-                self.store.set_alias(m.channel, self._peer(m.conversation_key), started)
+        peer = self._peer(m.conversation_key) or ""
+        if number and not self.store.alias(m.channel, peer):
+            # A DM we started under their number joins theirs, unless another account already
+            # answered there: a recycled number must not land a new owner in the old one's DM.
+            started = self.store.find_conversation(m.channel, self.messaging[m.channel].direct_key(number))
+            if started and not any(a != peer for a in self.store.aci_aliases(m.channel, started)):
+                self.store.set_alias(m.channel, peer, started)
         cid = self.conv_id(m.channel, m.conversation_key, m.kind)
         if self.store.message_by_platform(cid, m.platform_id):
             return None                                           # platform redelivery
@@ -312,10 +319,10 @@ class Gateway:
         }
         if m.extra:
             data.update(m.extra)
-        if data["addressed_to"]:
-            self.store.set_message(mid, consumer=data["addressed_to"])   # its edits and reactions follow it
         if m.kind == "group" and not m.addressed:
             return None                                           # policy: groups need a mention
+        if data["addressed_to"]:
+            self.store.set_message(mid, consumer=data["addressed_to"])   # its edits and reactions follow it
         if not self.allowed(m.channel, m.sender["id"], person):
             hid = new_id("held")
             self.store.x("INSERT INTO held VALUES (?,?,?,?,?,?,?,?)", hid, m.channel, m.sender["id"],
@@ -357,7 +364,7 @@ class Gateway:
 
     def _about(self, channel: str, key: dict, kind: str, row, text: str = "") -> dict:
         """Addressing for an event about an earlier message: whoever sent that message, if we did."""
-        return self.addressing(channel, key, kind, text, row)
+        return self.addressing(channel, key, kind, text, row, about=True)
 
     def inbound_edit(self, channel: str, key: dict, kind: str, sender_id: str,
                      target_platform: str, parts: list[dict], time_ms: int) -> None:

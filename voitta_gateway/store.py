@@ -168,6 +168,11 @@ class Store:
         row = self.one("SELECT conversation_id FROM aliases WHERE channel=? AND address=?", channel, address)
         return row["conversation_id"] if row else None
 
+    def aci_aliases(self, channel: str, cid: str) -> list[str]:
+        """Account ids (not numbers) aliased to a conversation."""
+        return [r["address"] for r in self.q("SELECT address FROM aliases WHERE channel=? AND conversation_id=?"
+                                             " AND address NOT LIKE '+%'", channel, cid)]
+
     def set_alias(self, channel: str, address: str, cid: str) -> None:
         self.x("INSERT OR REPLACE INTO aliases VALUES (?,?,?)", channel, address, cid)
 
