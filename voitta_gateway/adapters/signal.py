@@ -22,7 +22,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from ..config import SignalConfig, host_port
+from ..config import SignalConfig, host_port, is_account
 from .base import CallAdapter, Inbound, MessagingAdapter, PermanentError, Unsupported
 
 log = logging.getLogger(__name__)
@@ -412,6 +412,8 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
 
     def direct_key(self, address: str) -> dict:
         a = address.strip()
+        if is_account(a):
+            return {"peer": a.lower()}
         if re.fullmatch(r"\+?[\d\s\-().]{6,}", a):
             a = "+" + re.sub(r"\D", "", a)               # one spelling per number: "+1 555-..." is "+1555..."
         return {"peer": a}

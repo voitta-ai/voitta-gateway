@@ -168,6 +168,9 @@ class Store:
         row = self.one("SELECT conversation_id FROM aliases WHERE channel=? AND address=?", channel, address)
         return row["conversation_id"] if row else None
 
+    def drop_alias(self, channel: str, address: str) -> None:
+        self.x("DELETE FROM aliases WHERE channel=? AND address=?", channel, address)
+
     def rekey(self, cid: str, platform_key: dict) -> None:
         self.x("UPDATE conversations SET platform_key=? WHERE id=?", json.dumps(platform_key, sort_keys=True), cid)
 

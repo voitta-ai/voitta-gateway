@@ -6,6 +6,7 @@ variable (or a line in the optional env file); `Config.secret()` resolves them.
 from __future__ import annotations
 
 import os
+import re
 import unicodedata
 from pathlib import Path
 from typing import Literal
@@ -25,6 +26,14 @@ def clean_address(value: str) -> str:
     here is the fix."""
     retval = "".join(ch for ch in value if unicodedata.category(ch) != "Cf").strip()
     return retval
+
+
+_ACCOUNT = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+
+def is_account(address: str) -> bool:
+    """A Signal account id (ACI, a UUID), as opposed to a phone number -- even one made of digits."""
+    return bool(_ACCOUNT.fullmatch(address.strip()))
 
 
 class MediaFormat(BaseModel):
