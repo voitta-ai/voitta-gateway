@@ -758,7 +758,7 @@ components:
         id: {type: string}
         conversation_id: {type: string}
         direction: {type: string, enum: [in, out]}
-        status: {type: string, enum: [received, queued, sent, delivered, read, failed]}
+        status: {type: string, enum: [received, queued, sent, delivered, read, failed, deleted]}
         error: {type: [string, "null"]}
 
     StartCallRequest:
