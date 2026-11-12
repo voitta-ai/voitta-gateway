@@ -576,7 +576,7 @@ components:
                 agent_not_connected, call_ended, emergency_number_blocked,
                 forbidden_conversation, not_listed, not_yours (403: outside the consumer's conversations),
                 too_long, bad_text, bad_styles, bad_mentions, bad_parts, bad_wait (422), deleted (409),
-                send_failed (502, with wait_s), key_reused (409: an idempotency_key from another kind of request)
+                send_failed (502, with wait_s), key_reused (409: an idempotency_key from another kind of request), message_gone (409: the key's message no longer exists)
             message: {type: string}
 
     ChannelName: {type: string, enum: [signal, slack, phone]}

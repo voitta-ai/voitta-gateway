@@ -123,6 +123,9 @@ def build_api(gw: Gateway) -> FastAPI:
         deadline = loop.time() + wait
         while True:
             row = gw.store.message(mid)
+            if row is None:                               # the key outlived its message (data reset)
+                raise ApiError(409, "message_gone", "the message this idempotency_key queued no longer "
+                                                    "exists; send again with a new key")
             if row["status"] in ("sent", "delivered", "read", "deleted"):
                 return JSONResponse({**result, "status": row["status"]}, status_code=200)
             if row["status"] == "failed":
