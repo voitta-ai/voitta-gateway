@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS conversations (
     last_seq INTEGER NOT NULL DEFAULT 0,
     UNIQUE (channel, platform_key)
 );
+CREATE TABLE IF NOT EXISTS aliases (    -- another address of a direct conversation's peer
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    PRIMARY KEY (channel, address)
+);
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
@@ -41,7 +47,7 @@ CREATE TABLE IF NOT EXISTS messages (
     status TEXT NOT NULL,
     error TEXT,
     created REAL NOT NULL,
-    consumer TEXT                    -- who sent it (outbound only)
+    consumer TEXT                    -- who sent it (out), or whom it was addressed to (in)
 );
 CREATE INDEX IF NOT EXISTS messages_platform ON messages (conversation_id, platform_id);
 CREATE INDEX IF NOT EXISTS messages_platform_only ON messages (platform_id);
@@ -152,6 +158,18 @@ class Store:
         self.x("INSERT OR IGNORE INTO conversations (id, channel, platform_key, kind) VALUES (?,?,?,?)",
                cid, channel, key, kind)
         return cid
+
+    def find_conversation(self, channel: str, platform_key: dict) -> str | None:
+        row = self.one("SELECT id FROM conversations WHERE channel=? AND platform_key=?",
+                       channel, json.dumps(platform_key, sort_keys=True))
+        return row["id"] if row else None
+
+    def alias(self, channel: str, address: str) -> str | None:
+        row = self.one("SELECT conversation_id FROM aliases WHERE channel=? AND address=?", channel, address)
+        return row["conversation_id"] if row else None
+
+    def set_alias(self, channel: str, address: str, cid: str) -> None:
+        self.x("INSERT OR REPLACE INTO aliases VALUES (?,?,?)", channel, address, cid)
 
     def conversation_row(self, cid: str) -> sqlite3.Row | None:
         return self.one("SELECT * FROM conversations WHERE id=?", cid)

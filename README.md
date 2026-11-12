@@ -141,6 +141,10 @@ adapters:
 - **`label`** is prefixed to the consumer's text (`Ada: ...`), so people can tell agents apart.
 - **DMs** go to the consumer that last sent into that conversation, else `direct_consumer`. Any
   consumer may start a DM that has no messages yet; only the consumers serving a DM act in it.
+  An operator's admin send does not take a DM or a thread over. One person is one DM whichever
+  address reaches them: a send by number joins the DM their messages arrive in (by ACI) when
+  `persons` lists both, or once signal-cli has reported their number on an inbound message.
+  Edits, deletes and reactions on a person's message go to the consumer that message went to.
 - **Calls** are routed by `routes:`, not by this map: give message consumers `events` patterns
   without `call.*`.
 - A listed group whose entry names no `consumers`, and DMs with no `direct_consumer` set, reach

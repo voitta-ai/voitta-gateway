@@ -131,6 +131,12 @@ class Gateway:
         a = self.cfg.adapters
         return bool(self.cfg.conversations) or any(x is not None and x.direct_consumer for x in (a.signal, a.slack))
 
+    def _agent(self, name: str | None) -> bool:
+        """A configured consumer without the admin scope: one that a conversation can be routed to.
+        An operator's admin send does not take a conversation over."""
+        c = self.cfg.consumers.get(name or "")
+        return c is not None and "admin" not in c.scopes
+
     def serving(self, channel: str, key: dict, kind: str) -> list[str] | None:
         """Consumers that serve a conversation, default addressee first.
 
@@ -142,10 +148,11 @@ class Gateway:
             d = getattr(getattr(self.cfg.adapters, channel, None), "direct_consumer", None)
             if not d:
                 return None
-            cid = self.store.conversation(channel, key, kind)
+            cid = self.conv_id(channel, key, kind)
             sent = [r["consumer"] for r in self.store.q(
                 "SELECT consumer FROM messages WHERE conversation_id=? AND direction='out'"
                 " AND consumer IS NOT NULL GROUP BY consumer ORDER BY MAX(created) DESC", cid)]
+            sent = [s for s in sent if self._agent(s)]
             return sent + ([d] if d not in sent else [])
         if not self.cfg.conversations:
             return None
@@ -158,8 +165,8 @@ class Gateway:
         """Who an inbound event is for, so a shared account's consumers each see only their own.
 
         In order: the consumer that sent the message being replied to, reacted to or edited (on
-        Slack, its latest post in the thread), then a consumer whose name keyword is in the text,
-        then the conversation's default. `addressed_to: null` means every consumer, as before the
+        Slack, its latest post in the thread; for a human's message, the consumer it went to), then
+        the consumer whose name keyword comes first in the text, then the conversation's default. `addressed_to: null` means every consumer, as before the
         map existed; "" means none but admin tokens."""
         out = {"addressed_to": None}
         label = self.listed(channel, key) if kind == "group" else None
@@ -171,16 +178,18 @@ class Gateway:
         if not serving:
             out["addressed_to"] = ""
             return out
-        if target is not None and target["direction"] == "out" and target["consumer"] in serving:
+        # Our message's sender, or the consumer a human's message went to (edits, deletes, reactions)
+        if target is not None and target["consumer"] in serving:
             out["addressed_to"] = target["consumer"]
             return out
+        best = None
         for name in serving:
             for word in self.cfg.consumers[name].names:
                 # a whole word, optionally @-prefixed; not inside an address or a dotted name
-                if re.search(rf"(?<![\w.@])@?{re.escape(word)}(?![\w@]|\.\w)", text or "", re.IGNORECASE):
-                    out["addressed_to"] = name
-                    return out
-        out["addressed_to"] = serving[0]
+                m = re.search(rf"(?<![\w.@])@?{re.escape(word)}(?![\w@]|\.\w)", text or "", re.IGNORECASE)
+                if m and (best is None or m.start() < best[0]):
+                    best = (m.start(), name)               # the name said first is the one addressed
+        out["addressed_to"] = best[1] if best else serving[0]
         return out
 
     def check_scope(self, consumer: str | None, channel: str, key: dict, kind: str, op: str = "act") -> None:
@@ -190,11 +199,13 @@ class Gateway:
         c = self.cfg.consumers.get(consumer or "")
         if c is None or "admin" in c.scopes:
             return
+        if self.closed(channel, key, kind):
+            raise ApiError(403, "not_listed", "that group is not in the gateway's conversations map")
         serving = self.serving(channel, key, kind)
         if serving is None or consumer in serving:
             return
         if kind == "direct" and op == "send":
-            cid = self.store.conversation(channel, key, kind)
+            cid = self.conv_id(channel, key, kind)
             if self.store.one("SELECT 1 FROM messages WHERE conversation_id=?", cid) is None:
                 return
             raise ApiError(403, "forbidden_conversation", f"{consumer} does not serve that direct conversation")
@@ -250,7 +261,13 @@ class Gateway:
     async def inbound_message(self, m: Inbound) -> dict | None:
         if self.closed(m.channel, m.conversation_key, m.kind):
             return None                                           # policy: unlisted group
-        cid = self.store.conversation(m.channel, m.conversation_key, m.kind)
+        number = m.sender.get("number") if m.kind == "direct" else None
+        if number and not self.store.alias(m.channel, self._peer(m.conversation_key) or ""):
+            started = (self.store.alias(m.channel, number)
+                       or self.store.find_conversation(m.channel, self.messaging[m.channel].direct_key(number)))
+            if started:                                           # we started it under their number
+                self.store.set_alias(m.channel, self._peer(m.conversation_key), started)
+        cid = self.conv_id(m.channel, m.conversation_key, m.kind)
         if self.store.message_by_platform(cid, m.platform_id):
             return None                                           # platform redelivery
         m.sender.setdefault("kind", "human")
@@ -277,12 +294,15 @@ class Gateway:
                                     **self.addressing(m.channel, m.conversation_key, m.kind)},
                                    subject=cid, time=ms_to_iso(m.time_ms))
 
+        if m.kind == "direct" and m.sender.get("number"):
+            self.store.set_alias(m.channel, m.sender["number"], cid)   # a send to the number lands here too
         mid = self.store.add_message(cid, "in", m.platform_id, "received", thread=m.thread_platform)
         target = self.store.message_by_platform(cid, m.reply_to_platform) if m.reply_to_platform else None
-        if m.thread_platform:                                     # Slack: whoever posted last in the thread
-            target = self.store.one(
+        if m.thread_platform:                                     # Slack: the agent that posted last in the thread
+            target = next((r for r in self.store.q(
                 "SELECT * FROM messages WHERE conversation_id=? AND direction='out' AND consumer IS NOT NULL"
-                " AND thread_platform_id=? ORDER BY created DESC LIMIT 1", cid, m.thread_platform) or target
+                " AND thread_platform_id=? ORDER BY created DESC", cid, m.thread_platform)
+                if self._agent(r["consumer"])), target)
         data = {
             "message_id": mid, "conversation_id": cid, "channel": m.channel,
             "conversation_kind": m.kind, "sender": m.sender, "person_id": person,
@@ -292,6 +312,8 @@ class Gateway:
         }
         if m.extra:
             data.update(m.extra)
+        if data["addressed_to"]:
+            self.store.set_message(mid, consumer=data["addressed_to"])   # its edits and reactions follow it
         if m.kind == "group" and not m.addressed:
             return None                                           # policy: groups need a mention
         if not self.allowed(m.channel, m.sender["id"], person):
@@ -327,7 +349,7 @@ class Gateway:
         """Conversation id and person for follow-up events, or None if the sender is not let through."""
         if self.closed(channel, key, kind):
             return None
-        cid = self.store.conversation(channel, key, kind)
+        cid = self.conv_id(channel, key, kind)
         person = self.identity.lookup(channel, sender_id)
         if not self.allowed(channel, sender_id, person):
             return None
@@ -435,12 +457,9 @@ class Gateway:
             addrs = self.identity.addresses(to["person_id"])
             prefer = [to["channel"]] if to.get("channel") else ["signal", "slack"]
             for ch in prefer:
-                if ch in self.messaging and addrs.get(ch):
-                    address = addrs[ch][0]
-                    if self.opted_out(ch, address):
-                        continue
-                    key = self.messaging[ch].direct_key(address)
-                    return ch, self.store.conversation(ch, key, "direct"), key
+                usable = [a for a in addrs.get(ch) or [] if not self.opted_out(ch, a)]
+                if ch in self.messaging and usable:
+                    return (ch, *self._direct(ch, usable))
             raise ApiError(422, "no_route", f"no reachable channel for {to['person_id']}")
         if "conversation" in to:
             c = self.cfg.conversations.get(to["conversation"])
@@ -451,9 +470,34 @@ class Gateway:
             return c.channel, self.store.conversation(c.channel, key, "group"), key
         if "channel" in to and "address" in to:
             ch = to["channel"]
-            key = self.adapter(ch).direct_key(to["address"])
-            return ch, self.store.conversation(ch, key, "direct"), key
+            self.adapter(ch)
+            person = self.identity.lookup(ch, to["address"])
+            others = self.identity.addresses(person).get(ch) or [] if person else []
+            return (ch, *self._direct(ch, [to["address"], *others]))
         raise ApiError(422, "bad_target", "to needs conversation_id, conversation, person_id, or channel+address")
+
+    def _direct(self, channel: str, addresses: list[str]) -> tuple[str, dict]:
+        """The direct conversation with whoever owns these addresses: one that already exists under
+        any of them, else a new one under the first. Signal keys an inbound DM by ACI while a person
+        or caller may give a number, and two conversations for one chat would split its routing."""
+        adapter = self.messaging[channel]
+        keys = [adapter.direct_key(a) for a in addresses]
+        for key in keys:
+            cid = self.store.alias(channel, self._peer(key)) or self.store.find_conversation(channel, key)
+            if cid:
+                return cid, self.store.platform_key(cid)
+        cid = self.store.conversation(channel, keys[0], "direct")
+        for key in keys[1:]:
+            self.store.set_alias(channel, self._peer(key), cid)      # their reply, by ACI, lands here
+        return cid, keys[0]
+
+    def conv_id(self, channel: str, key: dict, kind: str) -> str:
+        """A conversation's id; a direct one known under another of the peer's addresses keeps it."""
+        if kind == "direct":
+            cid = self.store.alias(channel, self._peer(key) or "")
+            if cid:
+                return cid
+        return self.store.conversation(channel, key, kind)
 
     def _peer(self, key: dict) -> str | None:
         return key.get("peer") or key.get("user")

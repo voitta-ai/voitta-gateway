@@ -109,6 +109,8 @@ def build_api(gw: Gateway) -> FastAPI:
         row = gw.store.message(mid)
         if not row:
             raise ApiError(404, "unknown_message", mid)
+        conv = gw.store.conversation_row(row["conversation_id"])
+        gw.check_scope(p.name, conv["channel"], json.loads(conv["platform_key"]), conv["kind"])
         return {k: row[k] for k in ("id", "conversation_id", "direction", "status", "error")}
 
     @app.post("/v1/messages/{mid}/edit")

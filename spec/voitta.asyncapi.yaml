@@ -320,6 +320,8 @@ components:
               type: object
               required: [conversation_id, message_id, platform_id, person_id, sender, parts]
               properties:
+                addressed_to: {$ref: "#/components/schemas/AddressedTo"}
+                conversation: {type: string, description: "label in gateway.yaml conversations (mapped groups only)"}
                 conversation_id: {type: string}
                 message_id: {type: [string, "null"], description: "null if the original was never seen"}
                 platform_id: {type: string}
@@ -337,6 +339,8 @@ components:
               type: object
               required: [conversation_id, message_id, platform_id, person_id, sender]
               properties:
+                addressed_to: {$ref: "#/components/schemas/AddressedTo"}
+                conversation: {type: string, description: "label in gateway.yaml conversations (mapped groups only)"}
                 conversation_id: {type: string}
                 message_id: {type: [string, "null"]}
                 platform_id: {type: string}
@@ -363,6 +367,8 @@ components:
       type: object
       required: [conversation_id, message_id, emoji, person_id, sender]
       properties:
+        addressed_to: {$ref: "#/components/schemas/AddressedTo"}
+        conversation: {type: string, description: "label in gateway.yaml conversations (mapped groups only)"}
         conversation_id: {type: string}
         message_id: {type: [string, "null"]}
         emoji: {type: string, description: "Unicode (Signal) or a Slack emoji name"}
@@ -389,6 +395,8 @@ components:
       type: object
       required: [channel, conversation_id, address, person_id]
       properties:
+        addressed_to: {$ref: "#/components/schemas/AddressedTo"}
+        conversation: {type: string, description: "label in gateway.yaml conversations (mapped groups only)"}
         channel: {$ref: "#/components/schemas/ChannelName"}
         conversation_id: {type: string}
         address: {type: string}
@@ -404,6 +412,8 @@ components:
               type: object
               required: [op_id, op, conversation_id]
               properties:
+                addressed_to: {$ref: "#/components/schemas/AddressedTo"}
+                conversation: {type: string, description: "label in gateway.yaml conversations (mapped groups only)"}
                 op_id: {type: string, pattern: "^op_"}
                 op: {type: string, enum: [edit, delete, react]}
                 conversation_id: {type: string}
@@ -418,6 +428,8 @@ components:
               type: object
               required: [conversation_id, message_id, platform_id, person_id, sender, action_id, block_id, action_type, value]
               properties:
+                addressed_to: {$ref: "#/components/schemas/AddressedTo"}
+                conversation: {type: string, description: "label in gateway.yaml conversations (mapped groups only)"}
                 conversation_id: {type: string}
                 message_id: {type: [string, "null"], description: "our message the control was in, if known"}
                 platform_id: {type: [string, "null"]}
@@ -438,6 +450,8 @@ components:
               type: object
               required: [op_id, op, conversation_id, error]
               properties:
+                addressed_to: {$ref: "#/components/schemas/AddressedTo"}
+                conversation: {type: string, description: "label in gateway.yaml conversations (mapped groups only)"}
                 op_id: {type: string, pattern: "^op_"}
                 op: {type: string, enum: [edit, delete, react]}
                 conversation_id: {type: string}
