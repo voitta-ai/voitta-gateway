@@ -288,7 +288,7 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             rid = self.gw.store.x("INSERT INTO raw_inbound (channel, body) VALUES (?,?)",
                                   self.name, json.dumps(result)).lastrowid
             await self._process(result)
-            self.gw.store.x("UPDATE raw_inbound SET processed=1 WHERE id=?", rid)
+            self.gw.store.x("DELETE FROM raw_inbound WHERE id=?", rid)   # kept only until processed
         elif method == "callEvent":
             await self._call_event(result)
 
@@ -304,7 +304,9 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
                 await self._process(result)
             except Exception:
                 log.exception("replaying raw inbound %s failed", row["id"])
-            self.gw.store.x("UPDATE raw_inbound SET processed=1 WHERE id=?", row["id"])
+            self.gw.store.x("DELETE FROM raw_inbound WHERE id=?", row["id"])
+        # Rows from before raw bodies were dropped once processed: senders, numbers, held text
+        self.gw.store.x("DELETE FROM raw_inbound WHERE channel=? AND processed=1", self.name)
 
     def _closed_group(self, result: dict) -> bool:
         """An envelope that touches a group not listed under `conversations`.
