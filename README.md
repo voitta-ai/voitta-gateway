@@ -164,6 +164,9 @@ adapters:
   `idempotency_key` (per consumer, 24 h), so a timed-out POST can be retried safely.
 - **Signal messages** carry `timestamp` (the sender's sent timestamp, Signal's id for the message) and `mentions: [{id, start, length,
   self}]` exactly as signal-cli reports them: UTF-16 offsets, one U+FFFC per mention in the text.
+  To mention someone, put one U+FFFC in the text and add `mentions: [{id, start, length: 1}]` to
+  the text part, with the person's `sender.id` and the U+FFFC's UTF-16 offset; anything else is
+  `422 bad_mentions`, because an off-by-one mention tags the wrong person. The label shift applies.
   React, edit or delete by `message_id`; the gateway keeps the platform ids.
 - **Signal history** is the gateway's own record (Signal has no history API): the messages it
   delivered as events and the ones it sent, kept current through edits and deletes, from the time

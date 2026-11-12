@@ -37,6 +37,10 @@ GROUP_KEY = {"signal": "group", "slack": "channel"}       # where a group's id s
 STYLES = {"BOLD", "ITALIC", "SPOILER", "STRIKETHROUGH", "MONOSPACE"}
 
 
+MENTION_MARK = "\ufffc".encode("utf-16-le")                  # Signal puts each mention on one U+FFFC
+MENTION_ID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|\+\d{6,15}")
+
+
 def units(text: str) -> int:
     """Length in UTF-16 code units: what Signal counts for its limit and for style/mention offsets."""
     return len(text.encode("utf-16-le")) // 2
@@ -642,6 +646,18 @@ class Gateway:
                         or type(st.get("start")) is not int or type(st.get("length")) is not int
                         or st["start"] < 0 or st["length"] < 1 or st["start"] + st["length"] > units(p.get("text", ""))):
                     raise ApiError(422, "bad_styles", f"styles need start/length within the text and style in {sorted(STYLES)}")
+            if p.get("mentions") and not adapter.capabilities.get("mentions"):
+                raise ApiError(422, "unsupported", f"{adapter.name} does not support mentions")
+            if not isinstance(p.get("mentions") or [], list):
+                raise ApiError(422, "bad_mentions", "mentions must be a list")
+            raw = p["text"].encode("utf-16-le")
+            for m in p.get("mentions") or []:
+                if (not isinstance(m, dict) or type(m.get("start")) is not int or m.get("length") != 1
+                        or type(m.get("length")) is not int or not isinstance(m.get("id"), str)
+                        or not MENTION_ID.fullmatch(m["id"]) or m["start"] < 0
+                        or raw[2 * m["start"]:2 * m["start"] + 2] != MENTION_MARK):
+                    raise ApiError(422, "bad_mentions", "each mention needs an id (an ACI or +number), length 1, "
+                                                        "and start at a U+FFFC in the text (UTF-16 code units)")
         # signal-cli measures a body in UTF-8 bytes: past 2000 it cuts the text and attaches the rest
         limit = adapter.capabilities.get("max_text_bytes")
         total = sum(len(p.get("text", "").encode("utf-8")) for p in texts) + max(0, len(texts) - 1)  # joined by \n
@@ -686,8 +702,9 @@ class Gateway:
             if p.get("type") == "text":
                 prefix = f"{c.label}: "
                 p["text"] = prefix + p.get("text", "")
-                if p.get("styles"):
-                    p["styles"] = [{**st, "start": st.get("start", 0) + units(prefix)} for st in p["styles"]]
+                for k in ("styles", "mentions"):
+                    if p.get(k):
+                        p[k] = [{**r, "start": r.get("start", 0) + units(prefix)} for r in p[k]]
                 return parts
         return [{"type": "text", "text": f"{c.label}:"}] + parts
 
