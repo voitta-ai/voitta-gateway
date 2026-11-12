@@ -102,7 +102,28 @@ def build_api(gw: Gateway) -> FastAPI:
     async def send(data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
         if "to" not in data:
             raise ApiError(422, "bad_target", "to is required")
-        return idempotent(p, data, lambda: gw.send_message(p.name, data))
+        resp = idempotent(p, data, lambda: gw.send_message(p.name, data))
+        wait = data.get("wait_s")
+        if not wait:
+            return resp
+        # Synchronous mode for run-and-exit consumers: hold the answer until the platform took the
+        # message (200 sent) or refused it for good (502), else 202 as usual. Retries in between
+        # are the outbox's; a retried POST with the same idempotency_key waits on the same message.
+        try:
+            wait = min(max(float(wait), 0.0), 30.0)
+        except (TypeError, ValueError):
+            raise ApiError(422, "bad_wait", "wait_s must be a number of seconds")
+        mid = json.loads(resp.body)["message_id"]
+        deadline = asyncio.get_running_loop().time() + wait
+        while True:
+            row = gw.store.message(mid)
+            if row["status"] in ("sent", "delivered", "read"):
+                return JSONResponse({**json.loads(resp.body), "status": row["status"]}, status_code=200)
+            if row["status"] == "failed":
+                raise ApiError(502, "send_failed", row["error"] or "the platform refused the message")
+            if asyncio.get_running_loop().time() >= deadline:
+                return resp
+            await asyncio.sleep(0.1)
 
     @app.get("/v1/messages/{mid}")
     async def message(mid: str, p: Principal = Depends(need("events:read"))):

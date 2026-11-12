@@ -161,7 +161,10 @@ adapters:
   and styles are shifted to match. An edit cannot carry files.
 - **Run-and-exit consumers poll.** `GET /v1/events/poll?after=<next>` with the cursor kept on disk;
   persisting `next` is the ack. Events are at-least-once with stable ids, and sends take an
-  `idempotency_key` (per consumer, 24 h), so a timed-out POST can be retried safely.
+  `idempotency_key` (per consumer, 24 h), so a timed-out POST can be retried safely. A consumer
+  that must know a send went out before it exits passes `wait_s` (up to 30): 200 once the
+  platform took it, 502 `send_failed` if it was refused for good, 202 if still in flight; retry
+  a 202 later with the same key and it waits on the same message.
 - **Signal messages** carry `timestamp` (the sender's sent timestamp, Signal's id for the message) and `mentions: [{id, start, length,
   self}]` exactly as signal-cli reports them: UTF-16 offsets, one U+FFFC per mention in the text.
   To mention someone, put one U+FFFC in the text and add `mentions: [{id, start, length: 1}]` to

@@ -91,7 +91,7 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/MessageQueued"}
         "200":
-          description: duplicate of an earlier request with the same idempotency_key
+          description: sent (with wait_s), or a duplicate of an earlier request with the same idempotency_key
           content:
             application/json:
               schema: {$ref: "#/components/schemas/MessageQueued"}
@@ -575,7 +575,8 @@ components:
                 no_route, no_voice, opted_out, unsupported, not_ours, not_sent_yet, bad_state,
                 agent_not_connected, call_ended, emergency_number_blocked,
                 forbidden_conversation, not_listed, not_yours (403: outside the consumer's conversations),
-                too_long, bad_text, bad_styles, bad_mentions, bad_parts (422), deleted (409)
+                too_long, bad_text, bad_styles, bad_mentions, bad_parts, bad_wait (422), deleted (409),
+                send_failed (502, with wait_s)
             message: {type: string}
 
     ChannelName: {type: string, enum: [signal, slack, phone]}
@@ -751,6 +752,10 @@ components:
         parts: {type: array, minItems: 1, items: {$ref: "#/components/schemas/Part"}}
         reply_to: {type: string, description: "message_id in the same conversation"}
         idempotency_key: {type: string}
+        wait_s:
+          type: number
+          maximum: 30
+          description: "hold the answer up to this long (cap 30) until the platform took the message (200, status sent) or refused it for good (502 send_failed); still in flight at the deadline is the usual 202. For run-and-exit consumers: retry a 202 with the same idempotency_key"
 
     MessageQueued:
       type: object
@@ -759,7 +764,7 @@ components:
         message_id: {type: string, pattern: "^msg_"}
         conversation_id: {type: string, pattern: "^conv_"}
         channel: {$ref: "#/components/schemas/ChannelName"}
-        status: {const: queued}
+        status: {enum: [queued, sent, delivered, read], description: "queued, unless wait_s saw it sent"}
         duplicate: {type: boolean}
 
     MessageView:
