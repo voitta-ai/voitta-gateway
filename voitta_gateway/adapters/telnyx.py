@@ -220,7 +220,7 @@ class TelnyxAdapter(CallAdapter):
             if etype == "call.initiated":
                 if p.get("direction") == "incoming" and not call_id:
                     if self.cfg.numbers and p.get("to") not in self.cfg.numbers:
-                        log.warning("call to unconfigured number %s ignored", p.get("to"))
+                        log.warning("call to an unconfigured number ignored")
                         return
                     call = self.gw.calls.incoming(self, pid, p.get("from", "unknown"), p.get("to", ""),
                                                   self.route)

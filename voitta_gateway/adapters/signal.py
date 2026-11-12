@@ -22,6 +22,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from .. import scrub
 from ..config import SignalConfig, host_port, is_account
 from .base import CallAdapter, Inbound, MessagingAdapter, PermanentError, Unsupported
 
@@ -41,7 +42,7 @@ def _die_with_parent() -> None:
 
 class RpcError(Exception):
     def __init__(self, method: str, error: dict):
-        super().__init__(f"{method}: {error.get('message')} ({error.get('code')})")
+        super().__init__(f"{method}: {scrub.ids(error.get('message'))} ({error.get('code')})")   # logged
         self.code = error.get("code")
         self.error = error
 
@@ -71,7 +72,7 @@ class JsonRpc:
                 try:
                     msg = json.loads(line)
                 except json.JSONDecodeError:
-                    log.warning("signal-cli sent bad JSON: %r", line[:200])
+                    log.warning("signal-cli sent bad JSON: %s", scrub.ids(repr(line[:200])))
                     continue
                 if "id" in msg and ("result" in msg or "error" in msg) and "method" not in msg:
                     fut = self.pending.pop(msg["id"], None)
@@ -225,8 +226,26 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
                 "--no-receive-stdout"]
         if self.cfg.send_read_receipts:
             cmd.append("--send-read-receipts")
-        log.info("starting %s", " ".join(cmd))
-        self.proc = await asyncio.create_subprocess_exec(*cmd, env={**os.environ}, preexec_fn=_die_with_parent)
+        log.info("starting signal-cli daemon on %s", self.cfg.tcp)     # never the account: logs travel
+        # Its console output names the account ("Starting daemon ... for +1555..."): scrubbed, then logged
+        self.proc = await asyncio.create_subprocess_exec(*cmd, env={**os.environ}, preexec_fn=_die_with_parent,
+                                                         stdout=asyncio.subprocess.PIPE,
+                                                         stderr=asyncio.subprocess.STDOUT)
+        asyncio.create_task(self._relay_output(self.proc), name="signal-cli-output")
+
+    @staticmethod
+    async def _relay_output(proc) -> None:
+        # Never stop reading: an undrained pipe fills and blocks signal-cli, sends and receives
+        # with it. A line past the reader's limit is skipped, not fatal.
+        while True:
+            try:
+                line = await proc.stdout.readline()
+            except ValueError:                            # one line longer than the stream limit
+                await proc.stdout.read(2 ** 16)
+                continue
+            if not line:
+                return
+            log.info("signal-cli: %s", scrub.ids(line.decode(errors="replace").rstrip()))
 
     async def _connection_loop(self) -> None:
         host, port = host_port(self.cfg.tcp)
@@ -261,9 +280,9 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             for r in res or []:
                 if r.get("uuid"):
                     self.aci = r["uuid"]
-                    log.info("signal account %s is %s", self.account, self.aci)
+                    log.info("signal account's own ACI learned")
         except Exception as e:
-            log.warning("could not look up our own ACI (set adapters.signal.aci): %s", e)
+            log.warning("could not look up our own ACI (set adapters.signal.aci): %s", scrub.ids(e))
 
     async def stop(self) -> None:
         if self.task:
@@ -288,7 +307,7 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             rid = self.gw.store.x("INSERT INTO raw_inbound (channel, body) VALUES (?,?)",
                                   self.name, json.dumps(result)).lastrowid
             await self._process(result)
-            self.gw.store.x("UPDATE raw_inbound SET processed=1 WHERE id=?", rid)
+            self.gw.store.x("DELETE FROM raw_inbound WHERE id=?", rid)   # kept only until processed
         elif method == "callEvent":
             await self._call_event(result)
 
@@ -304,7 +323,9 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
                 await self._process(result)
             except Exception:
                 log.exception("replaying raw inbound %s failed", row["id"])
-            self.gw.store.x("UPDATE raw_inbound SET processed=1 WHERE id=?", row["id"])
+            self.gw.store.x("DELETE FROM raw_inbound WHERE id=?", row["id"])
+        # Rows from before raw bodies were dropped once processed: senders, numbers, held text
+        self.gw.store.x("DELETE FROM raw_inbound WHERE channel=? AND processed=1", self.name)
 
     def _closed_group(self, result: dict) -> bool:
         """An envelope that touches a group not listed under `conversations`.

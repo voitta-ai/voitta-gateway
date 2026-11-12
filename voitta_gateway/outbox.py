@@ -7,6 +7,7 @@ import json
 import logging
 import time
 
+from . import scrub
 from .adapters.base import PermanentError
 from .core import Gateway
 
@@ -94,7 +95,7 @@ class Outbox:
         except Exception as e:
             attempts = row["attempts"] + 1
             permanent = isinstance(e, PermanentError) or attempts >= self.gw.cfg.max_send_attempts
-            log.warning("%s %s %s attempt %d failed: %s", adapter.name, op, oid, attempts, e)
+            log.warning("%s %s %s attempt %d failed: %s", adapter.name, op, oid, attempts, scrub.ids(e))
             if permanent:
                 store.x("UPDATE outbox SET done=1, attempts=? WHERE message_id=?", attempts, oid)
                 if op == "send":
