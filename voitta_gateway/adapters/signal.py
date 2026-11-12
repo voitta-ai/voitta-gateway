@@ -225,7 +225,7 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
                 "--no-receive-stdout"]
         if self.cfg.send_read_receipts:
             cmd.append("--send-read-receipts")
-        log.info("starting %s", " ".join(cmd))
+        log.info("starting signal-cli daemon on %s", self.cfg.tcp)     # never the account: logs travel
         self.proc = await asyncio.create_subprocess_exec(*cmd, env={**os.environ}, preexec_fn=_die_with_parent)
 
     async def _connection_loop(self) -> None:
@@ -261,7 +261,7 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             for r in res or []:
                 if r.get("uuid"):
                     self.aci = r["uuid"]
-                    log.info("signal account %s is %s", self.account, self.aci)
+                    log.info("signal account's own ACI learned")
         except Exception as e:
             log.warning("could not look up our own ACI (set adapters.signal.aci): %s", e)
 
