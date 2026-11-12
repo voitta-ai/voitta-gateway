@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import math
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, Request
@@ -99,30 +100,35 @@ def build_api(gw: Gateway) -> FastAPI:
 
     # ------------------------------------------------------------ messages
     @app.post("/v1/messages")
-    async def send(data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
+    async def send(request: Request, data: dict = Depends(body),
+                   p: Principal = Depends(need("messages:send"))):
         if "to" not in data:
             raise ApiError(422, "bad_target", "to is required")
-        resp = idempotent(p, data, lambda: gw.send_message(p.name, data))
         wait = data.get("wait_s")
+        if wait is not None:                              # checked before anything is queued
+            if isinstance(wait, bool) or not isinstance(wait, (int, float)) or not math.isfinite(wait):
+                raise ApiError(422, "bad_wait", "wait_s must be a finite number of seconds")
+            wait = min(max(float(wait), 0.0), 30.0)
+        resp = idempotent(p, data, lambda: gw.send_message(p.name, data))
         if not wait:
             return resp
         # Synchronous mode for run-and-exit consumers: hold the answer until the platform took the
-        # message (200 sent) or refused it for good (502), else 202 as usual. Retries in between
-        # are the outbox's; a retried POST with the same idempotency_key waits on the same message.
-        try:
-            wait = min(max(float(wait), 0.0), 30.0)
-        except (TypeError, ValueError):
-            raise ApiError(422, "bad_wait", "wait_s must be a number of seconds")
-        mid = json.loads(resp.body)["message_id"]
-        deadline = asyncio.get_running_loop().time() + wait
+        # message (200) or refused it for good (502), else 202. Retries in between are the outbox's;
+        # a retried POST with the same idempotency_key waits on the same message.
+        result = json.loads(resp.body)
+        if "conversation_id" not in result:
+            raise ApiError(409, "key_reused", "that idempotency_key was used for another kind of request")
+        mid = result["message_id"]
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + wait
         while True:
             row = gw.store.message(mid)
-            if row["status"] in ("sent", "delivered", "read"):
-                return JSONResponse({**json.loads(resp.body), "status": row["status"]}, status_code=200)
+            if row["status"] in ("sent", "delivered", "read", "deleted"):
+                return JSONResponse({**result, "status": row["status"]}, status_code=200)
             if row["status"] == "failed":
                 raise ApiError(502, "send_failed", row["error"] or "the platform refused the message")
-            if asyncio.get_running_loop().time() >= deadline:
-                return resp
+            if loop.time() >= deadline or await request.is_disconnected():
+                return JSONResponse({**result, "status": row["status"]}, status_code=202)  # still in flight
             await asyncio.sleep(0.1)
 
     @app.get("/v1/messages/{mid}")
