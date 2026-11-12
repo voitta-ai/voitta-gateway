@@ -168,6 +168,9 @@ class Store:
         row = self.one("SELECT conversation_id FROM aliases WHERE channel=? AND address=?", channel, address)
         return row["conversation_id"] if row else None
 
+    def rekey(self, cid: str, platform_key: dict) -> None:
+        self.x("UPDATE conversations SET platform_key=? WHERE id=?", json.dumps(platform_key, sort_keys=True), cid)
+
     def aci_aliases(self, channel: str, cid: str) -> list[str]:
         """Account ids (not numbers) aliased to a conversation."""
         return [r["address"] for r in self.q("SELECT address FROM aliases WHERE channel=? AND conversation_id=?"

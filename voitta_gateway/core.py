@@ -268,12 +268,14 @@ class Gateway:
             return None                                           # policy: unlisted group
         number = m.sender.get("number") if m.kind == "direct" else None
         peer = self._peer(m.conversation_key) or ""
-        if number and not self.store.alias(m.channel, peer):
-            # A DM we started under their number joins theirs, unless another account already
-            # answered there: a recycled number must not land a new owner in the old one's DM.
+        if (number and not self.store.alias(m.channel, peer)
+                and not self.store.find_conversation(m.channel, m.conversation_key)):
+            # A DM we started under their number becomes theirs: re-keyed to their account, so
+            # replies follow the person, not whoever holds the number later. Only while it is still
+            # keyed by the number, so a recycled number never lands a new owner in someone's DM.
             started = self.store.find_conversation(m.channel, self.messaging[m.channel].direct_key(number))
             if started and not any(a != peer for a in self.store.aci_aliases(m.channel, started)):
-                self.store.set_alias(m.channel, peer, started)
+                self.store.rekey(started, m.conversation_key)
         cid = self.conv_id(m.channel, m.conversation_key, m.kind)
         if self.store.message_by_platform(cid, m.platform_id):
             return None                                           # platform redelivery
@@ -488,6 +490,8 @@ class Gateway:
         any of them, else a new one under the first. Signal keys an inbound DM by ACI while a person
         or caller may give a number, and two conversations for one chat would split its routing."""
         adapter = self.messaging[channel]
+        # An account id before a number: a conversation keyed by the account follows the person
+        addresses = sorted(addresses, key=lambda a: a.strip().startswith("+") or a.strip()[:1].isdigit())
         keys = [adapter.direct_key(a) for a in addresses]
         for key in keys:
             cid = self.store.alias(channel, self._peer(key)) or self.store.find_conversation(channel, key)
