@@ -377,10 +377,29 @@ class Gateway:
         """Addressing for an event about an earlier message: whoever sent that message, if we did."""
         return self.addressing(channel, key, kind, text, row, about=True)
 
+    def _held_change(self, channel: str, key: dict, kind: str, target_platform: str,
+                     parts: list[dict] | None) -> None:
+        """A held sender edited or deleted a held message: release what they last sent, or nothing."""
+        if self.closed(channel, key, kind):
+            return
+        row = self.store.message_by_platform(self.conv_id(channel, key, kind), target_platform)
+        if not row:
+            return
+        for h in self.store.q("SELECT id, data FROM held WHERE conversation_id=? AND event_type='message.received'",
+                              row["conversation_id"]):
+            data = json.loads(h["data"])
+            if data.get("message_id") != row["id"]:
+                continue
+            if parts is None:
+                self.store.x("DELETE FROM held WHERE id=?", h["id"])
+            else:
+                self.store.x("UPDATE held SET data=? WHERE id=?", json.dumps({**data, "parts": parts}), h["id"])
+
     def inbound_edit(self, channel: str, key: dict, kind: str, sender_id: str,
                      target_platform: str, parts: list[dict], time_ms: int) -> None:
         k = self._known(channel, key, kind, sender_id)
         if not k:
+            self._held_change(channel, key, kind, target_platform, parts)
             return
         cid, person = k
         row = self.store.message_by_platform(cid, target_platform)
@@ -398,6 +417,7 @@ class Gateway:
                        target_platform: str, time_ms: int) -> None:
         k = self._known(channel, key, kind, sender_id)
         if not k:
+            self._held_change(channel, key, kind, target_platform, None)
             return
         cid, person = k
         row = self.store.message_by_platform(cid, target_platform)
@@ -589,6 +609,9 @@ class Gateway:
     def _record(self, data: dict, at: str) -> None:
         """Keep a delivered message's content for history on platforms without a history API.
         Only what reached a consumer as an event: no held senders, no unaddressed group chatter."""
+        a = self.messaging.get(data["channel"])
+        if a is None or a.capabilities.get("history"):
+            return                                                # the platform keeps it
         self.store.set_message(data["message_id"], sender=json.dumps(data["sender"]),
                                parts=json.dumps(data["parts"]), time=at)
 
@@ -619,10 +642,11 @@ class Gateway:
                         or type(st.get("start")) is not int or type(st.get("length")) is not int
                         or st["start"] < 0 or st["length"] < 1 or st["start"] + st["length"] > units(p.get("text", ""))):
                     raise ApiError(422, "bad_styles", f"styles need start/length within the text and style in {sorted(STYLES)}")
-        limit = adapter.capabilities.get("max_text_units")
-        total = sum(units(p.get("text", "")) for p in texts) + max(0, len(texts) - 1)    # parts join with \n
+        # signal-cli measures a body in UTF-8 bytes: past 2000 it cuts the text and attaches the rest
+        limit = adapter.capabilities.get("max_text_bytes")
+        total = sum(len(p.get("text", "").encode("utf-8")) for p in texts) + max(0, len(texts) - 1)  # joined by \n
         if limit and total > limit:
-            raise ApiError(422, "too_long", f"{total} UTF-16 code units; {adapter.name} takes {limit}. Split before sending.")
+            raise ApiError(422, "too_long", f"{total} UTF-8 bytes; {adapter.name} takes {limit}. Split before sending.")
 
     def send_message(self, consumer: str, body: dict) -> dict:
         channel, cid, key = self.resolve_target(body["to"])
@@ -644,7 +668,8 @@ class Gateway:
         parts = self._labelled(consumer, parts)
         self._check_text(adapter, parts)
         mid = self.store.add_message(cid, "out", None, "queued", consumer=consumer)
-        self.store.set_message(mid, parts=json.dumps(parts), time=ms_to_iso(time.time() * 1000))
+        if not adapter.capabilities.get("history"):
+            self.store.set_message(mid, parts=json.dumps(parts), time=ms_to_iso(time.time() * 1000))
         self.outbox.enqueue(mid, channel, cid, "send", {"key": key, "parts": parts, "reply_to": reply})
         self.events.append("message.status", self.source(channel),
                            {"conversation_id": cid, "message_id": mid, "status": "queued",
@@ -684,7 +709,11 @@ class Gateway:
             raise ApiError(422, "not_ours", "only the gateway's own messages can be edited or deleted")
         if not row["platform_id"]:
             raise ApiError(409, "not_sent_yet", "message has no platform id yet")
+        if row["status"] == "deleted":
+            raise ApiError(409, "deleted", "that message was deleted")
         if op == "edit":
+            if any(p.get("type") == "file" for p in payload.get("parts") or []):
+                raise ApiError(422, "bad_parts", "an edit cannot add files; send them as a new message")
             self._check_parts(conv["channel"], adapter, payload.get("parts") or [])
             self._check_text(adapter, payload.get("parts") or [])
             payload = {**payload, "parts": self._labelled(row["consumer"], payload.get("parts") or [])}

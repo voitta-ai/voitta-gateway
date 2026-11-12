@@ -198,8 +198,9 @@ paths:
         Platforms without a history API (Signal) are served from what the gateway recorded since it
         started: messages it delivered as events (no held senders, no unaddressed group chatter) and
         its own sends, kept current through edits and deletes.
-        Includes messages the gateway never delivered as events (other people talking without
-        a mention, the agent's own posts): this is context, not a second event stream.
+        From a platform API (Slack) it includes messages the gateway never delivered as events
+        (other people talking without a mention, the agent's own posts): this is context, not a
+        second event stream.
       x-scope: events:read
       parameters:
         - {name: conversation_id, in: path, required: true, schema: {type: string}}
@@ -573,7 +574,8 @@ components:
                 unknown_attachment, bad_target, bad_reply_to, bad_digits, bad_emoji, empty,
                 no_route, no_voice, opted_out, unsupported, not_ours, not_sent_yet, bad_state,
                 agent_not_connected, call_ended, emergency_number_blocked,
-                forbidden_conversation, not_listed, not_yours (403: outside the consumer's conversations)
+                forbidden_conversation, not_listed, not_yours (403: outside the consumer's conversations),
+                too_long, bad_text, bad_styles, bad_parts (422), deleted (409)
             message: {type: string}
 
     ChannelName: {type: string, enum: [signal, slack, phone]}
@@ -609,7 +611,7 @@ components:
             interactions: {type: boolean, description: "emits interaction.received for buttons and menus"}
             voice_clips: {type: boolean}
             max_attachment_mb: {type: number}
-            max_text_units: {type: integer, description: "text limit in UTF-16 code units; longer sends are 422 too_long"}
+            max_text_bytes: {type: integer, description: "text limit in UTF-8 bytes, parts joined by newlines; longer sends are 422 too_long"}
             styles: {type: boolean, description: "text parts accept `styles`"}
         calls:
           description: call capabilities, null for messaging-only channels

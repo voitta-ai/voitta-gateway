@@ -179,7 +179,7 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
     name = "signal"
     capabilities = {"text": True, "attachments": True, "reactions": True, "edit": True,
                     "delete": True, "typing": True, "threads": False, "receipts": ["delivered", "read"],
-                    "max_attachment_mb": 100, "max_text_units": 2000, "styles": True}
+                    "max_attachment_mb": 100, "max_text_bytes": 2000, "styles": True}
     min_interval_s = 0.3
 
     def __init__(self, cfg: SignalConfig, port_factory=None):

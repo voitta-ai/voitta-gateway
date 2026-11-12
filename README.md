@@ -155,13 +155,14 @@ adapters:
 
 - **Text is final when it reaches the gateway.** The consumer renders Markdown and splits; the
   gateway does neither. Signal style ranges go on the text part, `styles: [{start, length, style}]`,
-  and a send over `max_text_units` (Signal: 2000) is `422 too_long`. Both count UTF-16 code units,
-  never characters. A consumer `label` is prefixed before the limit is checked, and styles are
-  shifted to match.
+  in UTF-16 code units. A send over `max_text_bytes` (Signal: 2000, in UTF-8 bytes, which is what
+  signal-cli measures) is `422 too_long`; past it signal-cli would cut the text and attach the
+  rest. Count neither in characters. A consumer `label` is prefixed before the limit is checked,
+  and styles are shifted to match. An edit cannot carry files.
 - **Run-and-exit consumers poll.** `GET /v1/events/poll?after=<next>` with the cursor kept on disk;
   persisting `next` is the ack. Events are at-least-once with stable ids, and sends take an
   `idempotency_key` (per consumer, 24 h), so a timed-out POST can be retried safely.
-- **Signal messages** carry `timestamp` (the server timestamp) and `mentions: [{id, start, length,
+- **Signal messages** carry `timestamp` (the sender's sent timestamp, Signal's id for the message) and `mentions: [{id, start, length,
   self}]` exactly as signal-cli reports them: UTF-16 offsets, one U+FFFC per mention in the text.
   React, edit or delete by `message_id`; the gateway keeps the platform ids.
 - **Signal history** is the gateway's own record (Signal has no history API): the messages it

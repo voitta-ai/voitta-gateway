@@ -262,7 +262,7 @@ components:
                 addressed: {type: boolean, description: "DM, or the agent was mentioned"}
                 addressed_to: {$ref: "#/components/schemas/AddressedTo"}
                 conversation: {type: string, description: "label in gateway.yaml conversations (mapped groups only)"}
-                timestamp: {type: integer, description: "Signal: the message's server timestamp (ms)"}
+                timestamp: {type: integer, description: "Signal: the message's sent timestamp (ms), which Signal uses as its id"}
                 mentions:
                   type: array
                   description: "Signal: as signal-cli reports them; offsets in UTF-16 code units, each mention one U+FFFC in the text"
