@@ -501,7 +501,9 @@ class Gateway:
         cid = self.store.conversation(channel, keys[0], "direct")
         for key in keys[1:]:
             self.store.set_alias(channel, self._peer(key), cid)      # their reply, by ACI, lands here
-        return cid, keys[0]
+        # The stored key, not keys[0]: a DM re-keyed to an account keeps its id, and sending (and
+        # the opt-out check) must go by the account, not the number it was started under
+        return cid, self.store.platform_key(cid)
 
     def conv_id(self, channel: str, key: dict, kind: str) -> str:
         """A conversation's id; a direct one known under another of the peer's addresses keeps it."""
