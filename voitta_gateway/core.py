@@ -38,7 +38,7 @@ STYLES = {"BOLD", "ITALIC", "SPOILER", "STRIKETHROUGH", "MONOSPACE"}
 
 
 MENTION_MARK = "\ufffc".encode("utf-16-le")                  # Signal puts each mention on one U+FFFC
-MENTION_ID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|\+\d{6,15}")
+MENTION_ID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|\+[0-9]{6,15}")
 
 
 def units(text: str) -> int:
