@@ -47,7 +47,10 @@ CREATE TABLE IF NOT EXISTS messages (
     status TEXT NOT NULL,
     error TEXT,
     created REAL NOT NULL,
-    consumer TEXT                    -- who sent it (out), or whom it was addressed to (in)
+    consumer TEXT,                   -- who sent it (out), or whom it was addressed to (in)
+    sender TEXT,                     -- JSON, inbound only
+    parts TEXT,                      -- JSON; kept for platforms with no history API (Signal)
+    time TEXT
 );
 CREATE INDEX IF NOT EXISTS messages_platform ON messages (conversation_id, platform_id);
 CREATE INDEX IF NOT EXISTS messages_platform_only ON messages (platform_id);
@@ -134,8 +137,10 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.executescript(SCHEMA)
-        if "consumer" not in {r["name"] for r in self.q("PRAGMA table_info(messages)")}:
-            self.x("ALTER TABLE messages ADD COLUMN consumer TEXT")      # databases from before #1 item 3
+        have = {r["name"] for r in self.q("PRAGMA table_info(messages)")}
+        for col in ("consumer", "sender", "parts", "time"):             # databases from before #1 items 3-4
+            if col not in have:
+                self.x(f"ALTER TABLE messages ADD COLUMN {col} TEXT")
         self.files = path.parent / "files"
         self.files.mkdir(parents=True, exist_ok=True)
 

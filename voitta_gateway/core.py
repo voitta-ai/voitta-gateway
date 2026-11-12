@@ -34,6 +34,12 @@ def digits(s: str) -> str:
 
 
 GROUP_KEY = {"signal": "group", "slack": "channel"}       # where a group's id sits in its platform key
+STYLES = {"BOLD", "ITALIC", "SPOILER", "STRIKETHROUGH", "MONOSPACE"}
+
+
+def units(text: str) -> int:
+    """Length in UTF-16 code units: what Signal counts for its limit and for style/mention offsets."""
+    return len(text.encode("utf-16-le")) // 2
 
 
 class Identity:
@@ -332,9 +338,11 @@ class Gateway:
                          cid, "message.received", json.dumps(data), ms_to_iso(m.time_ms), time.time())
             return self.events.append("message.held", self.source(m.channel),
                                       {"held_id": hid, "channel": m.channel, "conversation_id": cid,
-                                       "sender": {"id": m.sender["id"]}, "addressed_to": data["addressed_to"]},
+                                       "sender": {"id": m.sender["id"]}, "person_id": person,
+                                       "addressed_to": data["addressed_to"]},
                                       subject=cid, time=ms_to_iso(m.time_ms))
         await self._transcribe(data["parts"])                     # only for senders we let through
+        self._record(data, ms_to_iso(m.time_ms))
         return self.events.append("message.received", self.source(m.channel), data,
                                   subject=cid, time=ms_to_iso(m.time_ms))
 
@@ -369,13 +377,34 @@ class Gateway:
         """Addressing for an event about an earlier message: whoever sent that message, if we did."""
         return self.addressing(channel, key, kind, text, row, about=True)
 
+    def _held_change(self, channel: str, key: dict, kind: str, target_platform: str,
+                     parts: list[dict] | None) -> None:
+        """A held sender edited or deleted a held message: release what they last sent, or nothing."""
+        if self.closed(channel, key, kind):
+            return
+        row = self.store.message_by_platform(self.conv_id(channel, key, kind), target_platform)
+        if not row:
+            return
+        for h in self.store.q("SELECT id, data FROM held WHERE conversation_id=? AND event_type='message.received'",
+                              row["conversation_id"]):
+            data = json.loads(h["data"])
+            if data.get("message_id") != row["id"]:
+                continue
+            if parts is None:
+                self.store.x("DELETE FROM held WHERE id=?", h["id"])
+            else:
+                self.store.x("UPDATE held SET data=? WHERE id=?", json.dumps({**data, "parts": parts}), h["id"])
+
     def inbound_edit(self, channel: str, key: dict, kind: str, sender_id: str,
                      target_platform: str, parts: list[dict], time_ms: int) -> None:
         k = self._known(channel, key, kind, sender_id)
         if not k:
+            self._held_change(channel, key, kind, target_platform, parts)
             return
         cid, person = k
         row = self.store.message_by_platform(cid, target_platform)
+        if row and row["parts"] is not None:
+            self.store.set_message(row["id"], parts=json.dumps(parts))
         self.events.append("message.edited", self.source(channel),
                            {"conversation_id": cid, "message_id": row["id"] if row else None,
                             "platform_id": target_platform, "person_id": person,
@@ -388,9 +417,12 @@ class Gateway:
                        target_platform: str, time_ms: int) -> None:
         k = self._known(channel, key, kind, sender_id)
         if not k:
+            self._held_change(channel, key, kind, target_platform, None)
             return
         cid, person = k
         row = self.store.message_by_platform(cid, target_platform)
+        if row:
+            self.store.set_message(row["id"], parts=None)
         self.events.append("message.deleted", self.source(channel),
                            {"conversation_id": cid, "message_id": row["id"] if row else None,
                             "platform_id": target_platform, "person_id": person,
@@ -421,7 +453,8 @@ class Gateway:
             self.store.set_message(row["id"], status=status)
             self.events.append("message.status", self.source(channel),
                                {"conversation_id": row["conversation_id"], "message_id": row["id"],
-                                "status": status, "addressed_to": row["consumer"]},
+                                "status": status, "addressed_to": row["consumer"],
+                                "person_id": self.peer_person(row["conversation_id"])},
                                subject=row["conversation_id"], time=ms_to_iso(time_ms))
 
     # ================================================================ held queue
@@ -439,6 +472,8 @@ class Gateway:
                                 row["channel"], row["sender"])
         for r in released:
             data = json.loads(r["data"])
+            if r["event_type"] == "message.received":
+                self._record(data, r["platform_time"])
             self.events.append(r["event_type"], self.source(r["channel"]), data,
                                subject=r["conversation_id"], time=r["platform_time"])
             self.store.x("DELETE FROM held WHERE id=?", r["id"])
@@ -536,7 +571,7 @@ class Gateway:
         self.check_scope(consumer, row["channel"], json.loads(row["platform_key"]), row["kind"])
         adapter = self.adapter(row["channel"])
         if not adapter.capabilities.get("history"):
-            raise ApiError(422, "unsupported", f"{row['channel']} has no message history")
+            return self._recorded_history(row, limit)
         thread_pid = None
         if thread:
             m = self.store.message(thread)
@@ -552,6 +587,66 @@ class Gateway:
             it["message_id"] = known["id"] if known else None
             it["person_id"] = self.identity.lookup(row["channel"], it["sender"].get("id"))
         return items
+
+    def _recorded_history(self, conv, limit: int) -> list[dict]:
+        """History the gateway kept itself, for platforms without a history API (Signal): what it
+        received from senders it let through and what it sent, since it started recording."""
+        adapter = self.adapter(conv["channel"])
+        me = getattr(adapter, "me", adapter.account)                # the ACI, as in events and platform ids
+        rows = self.store.q("SELECT * FROM messages WHERE conversation_id=? AND parts IS NOT NULL"
+                            " AND (direction='in' OR platform_id IS NOT NULL)"           # ours, once sent
+                            " ORDER BY created DESC LIMIT ?", conv["id"], max(1, min(int(limit), 200)))
+        out = []
+        for r in reversed(rows):
+            sender = (json.loads(r["sender"]) if r["sender"]
+                      else {"id": me, "kind": "self", "consumer": r["consumer"]})
+            out.append({"platform_id": r["platform_id"], "thread": None, "message_id": r["id"],
+                        "time": r["time"], "sender": sender, "parts": json.loads(r["parts"]),
+                        "person_id": self.identity.lookup(conv["channel"], sender.get("id"),
+                                                          sender.get("number")) if r["sender"] else None})
+        return out
+
+    def _record(self, data: dict, at: str) -> None:
+        """Keep a delivered message's content for history on platforms without a history API.
+        Only what reached a consumer as an event: no held senders, no unaddressed group chatter."""
+        a = self.messaging.get(data["channel"])
+        if a is None or a.capabilities.get("history"):
+            return                                                # the platform keeps it
+        self.store.set_message(data["message_id"], sender=json.dumps(data["sender"]),
+                               parts=json.dumps(data["parts"]), time=at)
+
+    def peer_person(self, cid: str) -> str | None:
+        """The person on the other end of a direct conversation, if gateway.yaml names them."""
+        row = self.store.conversation_row(cid)
+        if not row or row["kind"] != "direct":
+            return None
+        return self.identity.lookup(row["channel"], self._peer(json.loads(row["platform_key"])))
+
+    def _check_text(self, adapter: MessagingAdapter, parts: list[dict]) -> None:
+        """Style ranges and the length limit, both in UTF-16 code units. The gateway neither renders
+        Markdown nor splits: the consumer sends final text and owns splitting."""
+        texts = [p for p in parts if p.get("type") == "text"]
+        for p in texts:
+            if not isinstance(p.get("text"), str):
+                raise ApiError(422, "bad_text", "a text part needs a string text")
+            try:
+                p["text"].encode("utf-16-le")
+            except UnicodeEncodeError:
+                raise ApiError(422, "bad_text", "text holds an unpaired surrogate (a broken character)")
+            if p.get("styles") and not adapter.capabilities.get("styles"):
+                raise ApiError(422, "unsupported", f"{adapter.name} does not support styles")
+            if not isinstance(p.get("styles") or [], list):
+                raise ApiError(422, "bad_styles", "styles must be a list")
+            for st in p.get("styles") or []:
+                if (not isinstance(st, dict) or st.get("style") not in STYLES
+                        or type(st.get("start")) is not int or type(st.get("length")) is not int
+                        or st["start"] < 0 or st["length"] < 1 or st["start"] + st["length"] > units(p.get("text", ""))):
+                    raise ApiError(422, "bad_styles", f"styles need start/length within the text and style in {sorted(STYLES)}")
+        # signal-cli measures a body in UTF-8 bytes: past 2000 it cuts the text and attaches the rest
+        limit = adapter.capabilities.get("max_text_bytes")
+        total = sum(len(p.get("text", "").encode("utf-8")) for p in texts) + max(0, len(texts) - 1)  # joined by \n
+        if limit and total > limit:
+            raise ApiError(422, "too_long", f"{total} UTF-8 bytes; {adapter.name} takes {limit}. Split before sending.")
 
     def send_message(self, consumer: str, body: dict) -> dict:
         channel, cid, key = self.resolve_target(body["to"])
@@ -569,12 +664,16 @@ class Gateway:
                      "direction": r["direction"]}
         parts = body.get("parts") or []
         self._check_parts(channel, adapter, parts)
+        self._check_text(adapter, parts)
         parts = self._labelled(consumer, parts)
+        self._check_text(adapter, parts)
         mid = self.store.add_message(cid, "out", None, "queued", consumer=consumer)
+        if not adapter.capabilities.get("history"):
+            self.store.set_message(mid, parts=json.dumps(parts), time=ms_to_iso(time.time() * 1000))
         self.outbox.enqueue(mid, channel, cid, "send", {"key": key, "parts": parts, "reply_to": reply})
         self.events.append("message.status", self.source(channel),
                            {"conversation_id": cid, "message_id": mid, "status": "queued",
-                            "addressed_to": consumer}, subject=cid)
+                            "addressed_to": consumer, "person_id": self.peer_person(cid)}, subject=cid)
         return {"message_id": mid, "conversation_id": cid, "channel": channel, "status": "queued"}
 
     def _labelled(self, consumer: str | None, parts: list[dict]) -> list[dict]:
@@ -585,7 +684,10 @@ class Gateway:
         parts = [dict(p) for p in parts]
         for p in parts:
             if p.get("type") == "text":
-                p["text"] = f"{c.label}: {p.get('text', '')}"
+                prefix = f"{c.label}: "
+                p["text"] = prefix + p.get("text", "")
+                if p.get("styles"):
+                    p["styles"] = [{**st, "start": st.get("start", 0) + units(prefix)} for st in p["styles"]]
                 return parts
         return [{"type": "text", "text": f"{c.label}:"}] + parts
 
@@ -607,10 +709,16 @@ class Gateway:
             raise ApiError(422, "not_ours", "only the gateway's own messages can be edited or deleted")
         if not row["platform_id"]:
             raise ApiError(409, "not_sent_yet", "message has no platform id yet")
+        if row["status"] == "deleted":
+            raise ApiError(409, "deleted", "that message was deleted")
         if op == "edit":
+            if any(p.get("type") == "file" for p in payload.get("parts") or []):
+                raise ApiError(422, "bad_parts", "an edit cannot add files; send them as a new message")
             self._check_parts(conv["channel"], adapter, payload.get("parts") or [])
+            self._check_text(adapter, payload.get("parts") or [])
             payload = {**payload, "parts": self._labelled(row["consumer"], payload.get("parts") or [])}
-        payload = {**payload, "key": json.loads(conv["platform_key"]), "consumer": consumer,
+            self._check_text(adapter, payload["parts"])
+        payload = {**payload, "key": json.loads(conv["platform_key"]), "consumer": consumer, "message_id": mid,
                    "target": {"platform_id": row["platform_id"], "direction": row["direction"]}}
         opid = new_id("op")
         self.outbox.enqueue(opid, conv["channel"], conv["id"], op, payload)

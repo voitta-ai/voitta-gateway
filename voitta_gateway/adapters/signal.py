@@ -179,7 +179,7 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
     name = "signal"
     capabilities = {"text": True, "attachments": True, "reactions": True, "edit": True,
                     "delete": True, "typing": True, "threads": False, "receipts": ["delivered", "read"],
-                    "max_attachment_mb": 100}
+                    "max_attachment_mb": 100, "max_text_bytes": 2000, "styles": True}
     min_interval_s = 0.3
 
     def __init__(self, cfg: SignalConfig, port_factory=None):
@@ -403,7 +403,18 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
         await self.gw.inbound_message(Inbound(
             channel=self.name, conversation_key=key, kind=kind, sender=sender,
             platform_id=f"{sender_id}:{dm.get('timestamp') or ts}", time_ms=ts, parts=parts,
-            reply_to_platform=reply, addressed=self._addressed(dm, kind)))
+            reply_to_platform=reply, addressed=self._addressed(dm, kind),
+            extra={"timestamp": dm.get("timestamp") or ts, "mentions": self._mentions(dm)}))
+
+    def _mentions(self, dm: dict) -> list[dict]:
+        """Mentions as signal-cli reports them: offsets in UTF-16 code units into the text, where
+        each mention is one U+FFFC. Passed through unchanged; `self` marks this account."""
+        out = []
+        for m in dm.get("mentions") or []:
+            mid = m.get("uuid") or m.get("number")
+            out.append({"id": mid, "start": m.get("start"), "length": m.get("length"),
+                        "self": bool(mid) and self._author(m.get("uuid"), m.get("number")) == self.me})
+        return out
 
     # ================================================================ outbound messages
     @staticmethod
@@ -443,9 +454,26 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
         author, _, ts = platform_id.rpartition(":")
         return author, int(ts)
 
+    @staticmethod
+    def _text(parts: list[dict]) -> tuple[str, list[str]]:
+        """Text parts joined with newlines, and their style ranges as signal-cli takes them
+        (start:length:STYLE, UTF-16 code units, shifted by where each part lands)."""
+        texts, styles, at = [], [], 0
+        for p in parts:
+            if p.get("type") != "text":
+                continue
+            if texts:
+                at += 1                                       # the joining newline
+            texts.append(p["text"])
+            styles += [f"{at + st['start']}:{st['length']}:{st['style']}" for st in p.get("styles") or []]
+            at += len(p["text"].encode("utf-16-le")) // 2
+        return "\n".join(texts), styles
+
     async def send(self, key, parts, reply_to):
-        text = "\n".join(p["text"] for p in parts if p.get("type") == "text")
+        text, styles = self._text(parts)
         params = {**self._to(key), "message": text}
+        if styles:
+            params["textStyle"] = styles
         files = []
         for p in parts:
             if p.get("type") == "file":
@@ -462,8 +490,9 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
 
     async def edit(self, key, platform_id, parts):
         _, ts = self._split_ts(platform_id)
-        text = "\n".join(p["text"] for p in parts if p.get("type") == "text")
-        self._check_results(await self._rpc("send", **self._to(key), message=text, editTimestamp=ts))
+        text, styles = self._text(parts)
+        extra = {"textStyle": styles} if styles else {}
+        self._check_results(await self._rpc("send", **self._to(key), message=text, editTimestamp=ts, **extra))
 
     async def delete(self, key, platform_id):
         _, ts = self._split_ts(platform_id)

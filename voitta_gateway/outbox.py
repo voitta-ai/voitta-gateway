@@ -67,6 +67,8 @@ class Outbox:
         src = self.gw.source(adapter.name)
         sent = store.message(oid) if op == "send" else None
         who = {"addressed_to": sent["consumer"] if sent else payload.get("consumer")}   # the sender only
+        if sent:
+            who["person_id"] = self.gw.peer_person(cid)
         try:
             if op == "send":
                 pid, thread = await adapter.send(payload["key"], payload["parts"], payload.get("reply_to"))
@@ -75,8 +77,13 @@ class Outbox:
                                                       "status": "sent", **who}, subject=cid)
             elif op == "edit":
                 await adapter.edit(payload["key"], payload["target"]["platform_id"], payload["parts"])
+                kept = store.message(payload["message_id"]) if payload.get("message_id") else None
+                if kept and kept["parts"] is not None and kept["status"] != "deleted":   # recorded history
+                    store.set_message(kept["id"], parts=json.dumps(payload["parts"]))
             elif op == "delete":
                 await adapter.delete(payload["key"], payload["target"]["platform_id"])
+                if payload.get("message_id"):
+                    store.set_message(payload["message_id"], parts=None, status="deleted")
             elif op == "react":
                 await adapter.react(payload["key"], payload["target"], payload["emoji"],
                                     payload.get("remove", False))
