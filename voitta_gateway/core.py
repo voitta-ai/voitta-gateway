@@ -205,8 +205,10 @@ class Gateway:
         best = None
         for name in serving or []:
             for word in self.cfg.consumers[name].names:
-                # a whole word, optionally @-prefixed; not inside an address or a dotted name
-                m = re.search(rf"(?<![\w.@])@?{re.escape(word)}(?![\w@]|\.\w)", text or "", re.IGNORECASE)
+                # a whole word, optionally @-prefixed, said to someone: not inside an address, a
+                # URL or path, a dotted or hyphenated name, a #tag or a host:port ("ada: hi" counts)
+                m = re.search(rf"(?<![\w.@/#:\-])@?{re.escape(word)}(?![\w@/#]|[.:\-]\S)",
+                              text or "", re.IGNORECASE)
                 if m and (best is None or m.start() < best[0]):
                     best = (m.start(), name)               # the name said first is the one addressed
         return best[1] if best else None

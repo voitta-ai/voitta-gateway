@@ -142,8 +142,10 @@ adapters:
 - **Reaching an agent in a group.** Under `groups: mention` (the default) a group message reaches
   an agent only if it @mentions the shared account or quotes one of its messages. Under
   `groups: names` a serving agent's name keyword also counts ("ada, what's next?"), so people can
-  address an agent by the name it signs with rather than by the account's profile name. Other
-  chatter still reaches no one.
+  address an agent by the name it signs with rather than by the account's profile name. The name
+  must stand as a word said to someone: inside a URL, path, `#tag`, `host:port` or a hyphenated
+  or dotted name it does not count. Other chatter still reaches no one, and a group whose entry
+  names no `consumers` has no names to match.
 - **DMs** go to the consumer that last sent into that conversation, else `direct_consumer`. Any
   consumer may start a DM that has no messages yet; only the consumers serving a DM act in it.
   An operator's admin send does not take a DM or a thread over. One person is one DM whichever
