@@ -158,7 +158,7 @@ class Conversation(BaseModel):
     channel: Literal["signal", "slack"]
     key: str                                        # signal: group id; slack: channel id
     consumers: list[str] = []                       # who serves it: gets its events, may act there;
-                                                    # the first is the default addressee (#1 item 3).
+                                                    # the first that reads messages is the default addressee (#1 item 3).
                                                     # The label is also the send alias
                                                     # (`to: {conversation: label}`).
 
@@ -217,7 +217,12 @@ class Config(BaseModel):
         return v
 
     def model_post_init(self, __context) -> None:
+        seen: dict[tuple[str, str], str] = {}
         for label, c in self.conversations.items():
+            # Routing takes the first label for a key, so a second would be served by no one.
+            if (c.channel, c.key) in seen:
+                raise ValueError(f"conversation {label}: same group as {seen[(c.channel, c.key)]}")
+            seen[(c.channel, c.key)] = label
             for name in c.consumers:
                 if name not in self.consumers:
                     raise ValueError(f"conversation {label}: consumer {name!r} is not defined under consumers")

@@ -74,7 +74,7 @@ ASK_TOKEN=... python examples/ask.py +15551112222 "Will you join the review at t
 ## API (private listener, `Authorization: Bearer <consumer token>`)
 
 ```
-GET  /v1/health · /v1/channels · /v1/identities/{person_id}
+GET  /v1/health · /v1/channels · /v1/conversations · /v1/identities/{person_id}
 POST /v1/messages                     {to, parts[], reply_to?, idempotency_key?} -> 202 queued
 POST /v1/messages/{id}/edit|delete|reactions
 POST /v1/conversations/{id}/typing    {on}
@@ -119,8 +119,9 @@ gating happens at read time because Signal offers none earlier: anyone
 ## Several agents on one account
 
 One Signal account (or Slack app) can serve several consumers. `conversations:` maps each group
-to the consumers that serve it, default first; its label is also the alias they send to, so group
-ids stay in gateway.yaml. DMs go to the adapter's `direct_consumer`.
+to the consumers that serve it (the first that reads messages is the default); its label is also
+the alias they send to, so group ids stay in gateway.yaml. A consumer finds its labels with
+`GET /v1/conversations`. DMs go to the adapter's `direct_consumer`.
 
 ```yaml
 consumers:
