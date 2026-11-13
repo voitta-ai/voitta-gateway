@@ -259,7 +259,7 @@ components:
                 parts: {type: array, items: {$ref: "#/components/schemas/Part"}}
                 reply_to: {type: [string, "null"], description: "message_id this one quotes / answers"}
                 thread: {type: [string, "null"], description: "platform thread id (Slack)"}
-                addressed: {type: boolean, description: "DM, or the agent was mentioned"}
+                addressed: {type: boolean, description: "DM, the agent was mentioned, or (groups: names) a serving agent was named"}
                 addressed_to: {$ref: "#/components/schemas/AddressedTo"}
                 conversation: {type: string, description: "label in gateway.yaml conversations (mapped groups only)"}
                 timestamp: {type: integer, description: "Signal: the message's sent timestamp (ms), which Signal uses as its id"}

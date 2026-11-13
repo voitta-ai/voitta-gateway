@@ -67,7 +67,7 @@ class SignalConfig(BaseModel):
     # whenever it receives, for every conversation including groups that are not
     # listed under `conversations`, and no flag turns that off.
     send_read_receipts: bool = False
-    groups: Literal["mention", "all", "ignore"] = "mention"
+    groups: Literal["mention", "names", "all", "ignore"] = "mention"   # names: a serving agent's name also counts
     calls: bool = False
     route: str | None = None
     direct_consumer: str | None = None              # gets 1:1 messages; unset = every consumer
