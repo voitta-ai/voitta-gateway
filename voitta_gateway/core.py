@@ -229,6 +229,26 @@ class Gateway:
                     best = (m.start(), name)               # the name said first is the one addressed
         return best[1] if best else None
 
+    def conversations(self, consumer: str | None) -> list[dict]:
+        """The listed group conversations a consumer serves, by label, so it can find the groups it
+        is in without holding their ids. An entry that names no consumer is served by every one.
+        `default` is the consumer an unaddressed message goes to (null when it goes to all).
+        Admin tokens, and any token when nothing is shared, see every entry. A conversation whose
+        channel has no adapter here is left out: nothing can be sent to it."""
+        c = self.cfg.consumers.get(consumer or "")
+        everything = c is None or "admin" in c.scopes or not self.shared
+        out = []
+        for label, conv in self.cfg.conversations.items():
+            if conv.channel not in self.messaging:
+                continue
+            serving = list(conv.consumers)
+            if serving and consumer not in serving and not everything:
+                continue
+            readers = self._readers(serving)
+            out.append({"label": label, "channel": conv.channel, "consumers": serving,
+                        "default": readers[0] if readers else None})
+        return out
+
     def check_scope(self, consumer: str | None, channel: str, key: dict, kind: str, op: str = "act") -> None:
         """A consumer acts (sends, reacts, types, reads history) only in conversations that it serves.
         A direct conversation with no messages yet may be started by any consumer, which then serves

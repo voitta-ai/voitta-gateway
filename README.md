@@ -74,7 +74,7 @@ ASK_TOKEN=... python examples/ask.py +15551112222 "Will you join the review at t
 ## API (private listener, `Authorization: Bearer <consumer token>`)
 
 ```
-GET  /v1/health · /v1/channels · /v1/identities/{person_id}
+GET  /v1/health · /v1/channels · /v1/conversations · /v1/identities/{person_id}
 POST /v1/messages                     {to, parts[], reply_to?, idempotency_key?} -> 202 queued
 POST /v1/messages/{id}/edit|delete|reactions
 POST /v1/conversations/{id}/typing    {on}
