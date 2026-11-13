@@ -249,6 +249,48 @@ class Gateway:
                         "default": readers[0] if readers else None})
         return out
 
+    # ================================================================ /help (shared accounts)
+    _HELP = re.compile(r"/help(?:\s+@?(\S+))?\s*", re.IGNORECASE)
+
+    def _help(self, channel: str, key: dict, kind: str, text: str) -> tuple[str | None, str | None]:
+        """`/help` and `/help <agent>` on a shared account, where one sender name hides several
+        agents. (reply, None): the gateway answers itself -- the roster, or the `about` of an agent
+        that does not read messages. (None, consumer): that agent answers. (None, None): not a help
+        command, or nothing is shared."""
+        m = self._HELP.fullmatch(text or "")
+        if not m or not self.shared:
+            return None, None
+        serving = self.serving(channel, key, kind)
+        agents = [n for n in (serving if serving is not None else self.cfg.consumers) if self._agent(n)]
+        default = self._readers(serving)[0] if serving else None
+        want = (m.group(1) or "").lower()
+        if not want:
+            return self._roster(agents, default), None
+        hit = next((n for n in agents if want in {n.lower(), (self.cfg.consumers[n].label or "").lower(),
+                                                  *(w.lower() for w in self.cfg.consumers[n].names)}), None)
+        if hit and self._reads_messages(hit):
+            return None, hit
+        if hit:
+            return self._describe(hit, hit == default), None
+        return f"No agent called {m.group(1)} here.\n\n" + self._roster(agents, default), None
+
+    def _roster(self, agents: list[str], default: str | None) -> str:
+        lines = ["This account is shared; these agents answer here:"]
+        lines += [f"• {self._describe(n, n == default)}" for n in agents]
+        lines.append("Say /help <agent-name> to describe an agent.")
+        return "\n".join(lines)
+
+    def _describe(self, name: str, default: bool) -> str:
+        c = self.cfg.consumers[name]
+        out = (c.label or name) + (f": {c.about}" if c.about else "")
+        if not self._reads_messages(name):
+            how = "posts only; it does not read messages"
+        else:
+            ways = [f'say "{c.names[0]}"'] if c.names else []
+            ways += ["mention this account"] if default else []
+            how = " or ".join(ways) or "reply to one of its messages"
+        return f"{out} ({how})"
+
     def check_scope(self, consumer: str | None, channel: str, key: dict, kind: str, op: str = "act") -> None:
         """A consumer acts (sends, reacts, types, reads history) only in conversations that it serves.
         A direct conversation with no messages yet may be started by any consumer, which then serves
@@ -374,6 +416,16 @@ class Gateway:
         }
         if m.extra:
             data.update(m.extra)
+        if self.allowed(m.channel, m.sender["id"], person):
+            reply, route = self._help(m.channel, m.conversation_key, m.kind, text)
+            if reply is not None:                                 # the gateway answers; no agent sees it
+                self._record(data, ms_to_iso(m.time_ms))
+                self.send_message(None, {"to": {"conversation_id": cid}, "reply_to": mid,
+                                         "parts": [{"type": "text", "text": reply}]})
+                return None
+            if route:                                             # "/help <agent>": that agent answers
+                m.addressed = data["addressed"] = True
+                data["addressed_to"] = route
         if (m.kind == "group" and not m.addressed
                 and getattr(getattr(self.cfg.adapters, m.channel, None), "groups", None) == "names"
                 and self._named(self._readers(self.serving(m.channel, m.conversation_key, m.kind)), text)):
@@ -503,7 +555,7 @@ class Gateway:
             self.store.set_message(row["id"], status=status)
             self.events.append("message.status", self.source(channel),
                                {"conversation_id": row["conversation_id"], "message_id": row["id"],
-                                "status": status, "addressed_to": row["consumer"],
+                                "status": status, "addressed_to": row["consumer"] or "",   # the gateway's own: admin only
                                 "person_id": self.peer_person(row["conversation_id"])},
                                subject=row["conversation_id"], time=ms_to_iso(time_ms))
 
@@ -735,7 +787,8 @@ class Gateway:
         self.outbox.enqueue(mid, channel, cid, "send", {"key": key, "parts": parts, "reply_to": reply})
         self.events.append("message.status", self.source(channel),
                            {"conversation_id": cid, "message_id": mid, "status": "queued",
-                            "addressed_to": consumer, "person_id": self.peer_person(cid)}, subject=cid)
+                            "addressed_to": consumer if consumer is not None else "",  # the gateway's own: admin only
+                            "person_id": self.peer_person(cid)}, subject=cid)
         return {"message_id": mid, "conversation_id": cid, "channel": channel, "status": "queued"}
 
     def _labelled(self, consumer: str | None, parts: list[dict]) -> list[dict]:

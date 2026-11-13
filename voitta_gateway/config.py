@@ -134,6 +134,7 @@ class Consumer(BaseModel):
     events: list[str] = ["*"]                       # type patterns, e.g. message.*
     names: list[str] = []                           # name keywords that address this consumer
     label: str | None = None                        # prefixed to its outbound text ("label: ...")
+    about: str | None = None                        # one line for /help: what this agent does
 
 
 class Person(BaseModel):
