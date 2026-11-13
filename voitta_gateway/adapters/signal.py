@@ -451,6 +451,22 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             a = "+" + re.sub(r"\D", "", a)               # one spelling per number: "+1 555-..." is "+1555..."
         return {"peer": a}
 
+    async def group_info(self, key: dict) -> dict:
+        """Members and openness from signal-cli. A group is open when it has a link (signal-cli
+        does not say whether joining through it needs approval) or any member may add members."""
+        groups = await self._rpc("listGroups", detailed=True)
+        g = next((x for x in groups or [] if x.get("id") == key.get("group")), None)
+        if g is None or not g.get("isMember", True):
+            raise PermanentError("the account is not a member of that group")
+        members = [{"id": m.get("uuid") or m.get("number"), "number": m.get("number"),
+                    "admin": bool(m.get("isAdmin"))} for m in g.get("members") or []]
+        reasons = []
+        if g.get("groupInviteLink"):
+            reasons.append("the group link is on")
+        if g.get("permissionAddMember") != "ONLY_ADMINS":
+            reasons.append("members other than admins can add members")
+        return {"members": [m for m in members if m["id"]], "open": reasons}
+
     async def _rpc(self, method: str, **params):
         if not self.rpc:
             raise ConnectionError("signal-cli is not connected")

@@ -141,6 +141,8 @@ class Person(BaseModel):
     signal: list[str] = []                          # ACI (UUID) and/or E.164
     slack: list[str] = []                           # U123 or T123/U123
     phone: list[str] = []                           # E.164
+    agent: bool = False                             # an agent, not a person: consumers may limit
+                                                    # how often they answer it (loop guards)
 
     @field_validator("signal", "slack", "phone")
     @classmethod
@@ -162,6 +164,12 @@ class Conversation(BaseModel):
                                                     # the first that reads messages is the default addressee (#1 item 3).
                                                     # The label is also the send alias
                                                     # (`to: {conversation: label}`).
+    # Who gets through. allowlist: the policy's inbound_allowlist and approvals,
+    # as for DMs. members: anyone in the group -- the platform only delivers a
+    # member's message -- so keeping the group closed (no open link, only admins
+    # add members) is the maintainer's job, as it is for a private Slack channel.
+    # GET /v1/conversations/{label}/members reports how closed it is.
+    admit: Literal["allowlist", "members"] = "allowlist"
 
     @field_validator("key")
     @classmethod

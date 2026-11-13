@@ -72,6 +72,42 @@ paths:
                   conversations: {type: array, items: {$ref: "#/components/schemas/ListedConversation"}}
         default: {$ref: "#/components/responses/Error"}
 
+  /v1/conversations/{label}/members:
+    get:
+      operationId: listMembers
+      summary: A listed group's members and whether it is open
+      description: >-
+        For a consumer that serves the conversation. Members carry the platform account id, the
+        admin flag, and `person_id`/`agent` from `persons` (never a profile name). `open` is true
+        when a group link is on or members other than admins can add members; `reasons` says which.
+      x-scope: events:read
+      parameters: [{name: label, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [label, admit, members, open, reasons]
+                properties:
+                  label: {type: string}
+                  admit: {type: string, enum: [allowlist, members]}
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, admin, self, person_id, agent]
+                      properties:
+                        id: {type: string}
+                        admin: {type: boolean}
+                        self: {type: boolean, description: "this account"}
+                        person_id: {type: [string, "null"]}
+                        agent: {type: boolean}
+                  open: {type: boolean}
+                  reasons: {type: array, items: {type: string}}
+        default: {$ref: "#/components/responses/Error"}
+
   /v1/identities/{person_id}:
     get:
       operationId: getIdentity

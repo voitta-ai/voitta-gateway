@@ -15,7 +15,7 @@ import time
 
 import httpx
 
-from .adapters.base import CallAdapter, Inbound, MessagingAdapter, Unsupported
+from .adapters.base import CallAdapter, Inbound, MessagingAdapter, PermanentError, Unsupported
 from .config import Config, is_account
 from .events import EventLog, matches, ms_to_iso
 from .store import Store, new_id
@@ -103,7 +103,12 @@ class Gateway:
         return f"/gateway/{channel}"
 
     # ================================================================ policy
-    def allowed(self, channel: str, sender_id: str, person_id: str | None) -> bool:
+    def allowed(self, channel: str, sender_id: str, person_id: str | None,
+                key: dict | None = None, kind: str | None = None) -> bool:
+        if kind == "group" and key is not None:
+            label = self.listed(channel, key)
+            if label and self.cfg.conversations[label].admit == "members":
+                return True                       # a member of a group the maintainer keeps closed
         al = self.cfg.policy.inbound_allowlist
         if al == "*" or (person_id and person_id in al):
             return True
@@ -333,6 +338,31 @@ class Gateway:
             how = " or ".join(ways) or "reply to one of its messages"
         return f"{out} ({how})"
 
+    async def members(self, label: str, consumer: str | None) -> dict:
+        """A listed group's members and how open it is, for a consumer that serves it. Names
+        come from `persons` only, never from profiles: anyone can call themselves anything."""
+        if label not in {c["label"] for c in self.conversations(consumer)}:
+            raise ApiError(404, "unknown_conversation", label)
+        conv = self.cfg.conversations[label]
+        adapter = self.adapter(conv.channel)
+        try:
+            info = await adapter.group_info({GROUP_KEY.get(conv.channel, "group"): conv.key})
+        except Unsupported as exc:
+            raise ApiError(422, "unsupported", str(exc))
+        except PermanentError as exc:
+            raise ApiError(409, "not_member", str(exc))
+        except Exception as exc:                  # signal-cli down or slow: the caller retries
+            raise ApiError(503, "unavailable", type(exc).__name__)
+        me = getattr(adapter, "me", None)
+        out = []
+        for mem in info["members"]:
+            pid = self.identity.lookup(conv.channel, mem["id"], mem.get("number"))
+            p = self.cfg.persons.get(pid) if pid else None
+            out.append({"id": mem["id"], "admin": mem["admin"], "self": mem["id"] == me,
+                        "person_id": pid, "agent": bool(p and p.agent)})
+        return {"label": label, "admit": conv.admit, "members": out,
+                "open": bool(info["open"]), "reasons": info["open"]}
+
     def check_scope(self, consumer: str | None, channel: str, key: dict, kind: str, op: str = "act") -> None:
         """A consumer acts (sends, reacts, types, reads history) only in conversations that it serves.
         A direct conversation with no messages yet may be started by any consumer, which then serves
@@ -458,7 +488,7 @@ class Gateway:
         }
         if m.extra:
             data.update(m.extra)
-        if self.allowed(m.channel, m.sender["id"], person):
+        if self.allowed(m.channel, m.sender["id"], person, m.conversation_key, m.kind):
             # "@account /help" and "/help @account" count; a mention of anyone else does not
             reply, route = self._help(m.channel, m.conversation_key, m.kind, self._without_self(m))
             if reply is not None:                                 # the gateway answers; no agent gets it
@@ -480,7 +510,7 @@ class Gateway:
             return None                                           # policy: groups need a mention
         if data["addressed_to"]:
             self.store.set_message(mid, consumer=data["addressed_to"])   # its edits and reactions follow it
-        if not self.allowed(m.channel, m.sender["id"], person):
+        if not self.allowed(m.channel, m.sender["id"], person, m.conversation_key, m.kind):
             hid = new_id("held")
             self.store.x("INSERT INTO held VALUES (?,?,?,?,?,?,?,?)", hid, m.channel, m.sender["id"],
                          cid, "message.received", json.dumps(data), ms_to_iso(m.time_ms), time.time())
@@ -517,7 +547,7 @@ class Gateway:
             return None
         cid = self.conv_id(channel, key, kind)
         person = self.identity.lookup(channel, sender_id)
-        if not self.allowed(channel, sender_id, person):
+        if not self.allowed(channel, sender_id, person, key, kind):
             return None
         return cid, person
 
