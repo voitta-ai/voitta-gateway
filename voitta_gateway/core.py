@@ -193,16 +193,24 @@ class Gateway:
         # A reply or quote follows the agent that sent the quoted message. An edit, delete or
         # reaction (`about`) also follows a human's message to the consumer it went to; a new
         # message quoting a human does not, so the name said in it still decides.
-        # Only to a consumer that reads messages: a send-only one (a digest poster) never would, and
-        # the quote then falls through to the name said, else the default, instead of being lost.
+        # A reaction, edit, delete or click (`about`) follows the post's own consumer, which may
+        # listen for exactly those. A new message quoting a post goes to it only if it reads
+        # messages: a send-only consumer (a digest poster) never would, so the quote falls through
+        # to the name said, else the default, instead of being lost.
         if (target is not None and target["consumer"] in serving
-                and (target["direction"] == "out" or about) and self._reads_messages(target["consumer"])):
+                and (about or (target["direction"] == "out" and self._reads_messages(target["consumer"])))):
             out["addressed_to"] = target["consumer"]
             return out
         # The name said, else the default: the first serving consumer that reads messages
-        readers = [n for n in serving if self._reads_messages(n)] or serving
+        readers = self._readers(serving)
         out["addressed_to"] = self._named(readers, text) or readers[0]
         return out
+
+    def _readers(self, serving: list[str] | None) -> list[str] | None:
+        """The serving consumers that read messages, or all of them if none does."""
+        if not serving:
+            return serving
+        return [n for n in serving if self._reads_messages(n)] or serving
 
     def _reads_messages(self, name: str) -> bool:
         c = self.cfg.consumers.get(name)
@@ -348,7 +356,7 @@ class Gateway:
             data.update(m.extra)
         if (m.kind == "group" and not m.addressed
                 and getattr(getattr(self.cfg.adapters, m.channel, None), "groups", None) == "names"
-                and self._named(self.serving(m.channel, m.conversation_key, m.kind), text)):
+                and self._named(self._readers(self.serving(m.channel, m.conversation_key, m.kind)), text)):
             m.addressed = data["addressed"] = True              # groups: names -- saying an agent's name
         if m.kind == "group" and not m.addressed:
             return None                                           # policy: groups need a mention

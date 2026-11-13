@@ -146,7 +146,9 @@ adapters:
   `groups: names` a serving agent's name keyword also counts ("ada, what's next?"), so people can
   address an agent by the name it signs with rather than by the account's profile name. The name
   must stand as a word said to someone: inside a URL, path, `#tag`, `host:port` or a hyphenated
-  or dotted name it does not count. Other chatter still reaches no one, and a group whose entry
+  or dotted name it does not count. A sentence that names the agent ("ada's build broke") does
+  reach it: names mode cannot tell talking about an agent from talking to it. Other chatter
+  still reaches no one, and a group whose entry
   names no `consumers` has no names to match.
 - **DMs** go to the consumer that last sent into that conversation, else `direct_consumer`. Any
   consumer may start a DM that has no messages yet; only the consumers serving a DM act in it.
