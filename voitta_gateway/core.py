@@ -263,31 +263,52 @@ class Gateway:
         serving = self.serving(channel, key, kind)
         agents = [n for n in (serving if serving is not None else self.cfg.consumers) if self._agent(n)]
         default = self._readers(serving)[0] if serving else None
+        mode = "direct" if kind == "direct" else (
+            getattr(getattr(self.cfg.adapters, channel, None), "groups", None)
+            or getattr(getattr(self.cfg.adapters, channel, None), "channels", None) or "mention")
+        limit = getattr(self.messaging.get(channel), "capabilities", {}).get("max_text_bytes") or 0
         want = (m.group(1) or "").lower()
         if not want:
-            return self._roster(agents, default), None
+            return self._roster(agents, default, mode, limit), None
         hit = next((n for n in agents if want in {n.lower(), (self.cfg.consumers[n].label or "").lower(),
                                                   *(w.lower() for w in self.cfg.consumers[n].names)}), None)
         if hit and self._reads_messages(hit):
             return None, hit
         if hit:
-            return self._describe(hit, hit == default), None
-        return f"No agent called {m.group(1)} here.\n\n" + self._roster(agents, default), None
+            return self._describe(hit, hit == default, mode), None
+        name = m.group(1)[:40]                                    # echoed: bounded
+        return f"No agent called {name} here.\n\n" + self._roster(agents, default, mode, limit), None
 
-    def _roster(self, agents: list[str], default: str | None) -> str:
-        lines = ["This account is shared; these agents answer here:"]
-        lines += [f"• {self._describe(n, n == default)}" for n in agents]
-        lines.append("Say /help <agent-name> to describe an agent.")
-        return "\n".join(lines)
+    def _roster(self, agents: list[str], default: str | None, mode: str, limit: int = 0) -> str:
+        """Everyone serving here. Past the adapter's size limit the `about` lines go first."""
+        for about in (True, False):
+            lines = ["This account is shared; these agents answer here:"]
+            lines += [f"• {self._describe(n, n == default, mode, about)}" for n in agents]
+            lines.append("Say /help <agent-name> to describe an agent.")
+            out = "\n".join(lines)
+            if not limit or len(out.encode("utf-8")) <= limit - 200:   # room for the "No agent" line
+                break
+        return out
 
-    def _describe(self, name: str, default: bool) -> str:
+    def _describe(self, name: str, default: bool, mode: str, about: bool = True) -> str:
+        """One agent and how to reach it, as this conversation's mode really routes: a name
+        addresses an agent by itself only under groups: names or all, and in a DM."""
         c = self.cfg.consumers[name]
-        out = (c.label or name) + (f": {c.about}" if c.about else "")
+        out = (c.label or name) + (f": {c.about}" if c.about and about else "")
         if not self._reads_messages(name):
             how = "posts only; it does not read messages"
         else:
-            ways = [f'say "{c.names[0]}"'] if c.names else []
-            ways += ["mention this account"] if default else []
+            said = f'"{c.names[0]}"' if c.names else None
+            if mode == "direct":
+                ways = [f"say {said}"] if said else []
+                ways += ["write here"] if default else []
+            elif mode in ("names", "all"):
+                ways = [f"say {said}"] if said else []
+                ways += ["mention this account"] if default else []
+            elif default:                                         # a mention alone reaches the default
+                ways = ["mention this account"]
+            else:
+                ways = [f"mention this account and say {said}"] if said else []
             how = " or ".join(ways) or "reply to one of its messages"
         return f"{out} ({how})"
 
@@ -417,12 +438,17 @@ class Gateway:
         if m.extra:
             data.update(m.extra)
         if self.allowed(m.channel, m.sender["id"], person):
-            reply, route = self._help(m.channel, m.conversation_key, m.kind, text)
-            if reply is not None:                                 # the gateway answers; no agent sees it
-                self._record(data, ms_to_iso(m.time_ms))
-                self.send_message(None, {"to": {"conversation_id": cid}, "reply_to": mid,
-                                         "parts": [{"type": "text", "text": reply}]})
-                return None
+            # "@account /help" counts: Signal puts U+FFFC where the mention was, Slack <@U...>
+            reply, route = self._help(m.channel, m.conversation_key, m.kind,
+                                      re.sub(r"^(?:\ufffc|<@\w+>)\s*", "", text))
+            if reply is not None:                                 # the gateway answers; no agent gets it
+                try:
+                    self.send_message(None, {"to": {"conversation_id": cid}, "reply_to": mid,
+                                             "parts": [{"type": "text", "text": reply}]})
+                    self._record(data, ms_to_iso(m.time_ms))
+                    return None
+                except ApiError as exc:                           # opted out, too long: the agent gets it
+                    log.warning("/help reply not sent (%s); passing the message on", exc.code)
             if route:                                             # "/help <agent>": that agent answers
                 m.addressed = data["addressed"] = True
                 data["addressed_to"] = route

@@ -146,7 +146,9 @@ adapters:
 - **`/help`.** On a shared account one sender name hides several agents, so the gateway answers
   a message that is exactly `/help` itself, from senders it lets through: the agents serving that
   conversation, each with its `about` line and how to reach it, then "Say /help <agent-name> to
-  describe an agent." No agent sees it. `/help <name>` (a consumer's name keyword, `label` or key)
+  describe an agent." It reaches no agent as a message (both stay in Signal's recorded history,
+  and "@account /help" counts too). If the reply cannot be sent (an opted-out DM, over the size
+  limit) the message goes on to the agent as usual. `/help <name>` (a consumer's name keyword, `label` or key)
   goes to that agent as a message addressed to it, so the agent describes itself; an agent that
   does not read messages is described by the gateway from its `about`. The gateway's own replies
   and their status events go to admin tokens only.
