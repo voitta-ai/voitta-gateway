@@ -279,6 +279,27 @@ class Gateway:
         name = m.group(1)[:40]                                    # echoed: bounded
         return f"No agent called {name} here.\n\n" + self._roster(agents, default, mode, limit), None
 
+    def _without_self(self, m: Inbound) -> str:
+        """The message text with mentions of this account removed, and only those: on Signal the
+        U+FFFC at each mention marked `self` (offsets in UTF-16 units into the one text part), on
+        Slack `<@bot_user>`."""
+        parts = [p.get("text", "") for p in m.parts if p.get("type") == "text"]
+        if not parts:
+            return ""
+        first = parts[0]
+        selves = {x.get("start") for x in (m.extra or {}).get("mentions") or [] if x.get("self")}
+        if selves:
+            kept, at = [], 0
+            for ch in first:
+                if not (ch == "\ufffc" and at in selves):
+                    kept.append(ch)
+                at += units(ch)
+            first = "".join(kept)
+        bot = getattr(self.messaging.get(m.channel), "bot_user", None)
+        if bot:
+            first = re.sub(rf"<@{re.escape(bot)}(?:\|[^>]*)?>", "", first)
+        return " ".join([first, *parts[1:]]).strip()
+
     def _roster(self, agents: list[str], default: str | None, mode: str, limit: int = 0) -> str:
         """Everyone serving here. Past the adapter's size limit the `about` lines go first."""
         for about in (True, False):
@@ -438,9 +459,8 @@ class Gateway:
         if m.extra:
             data.update(m.extra)
         if self.allowed(m.channel, m.sender["id"], person):
-            # "@account /help" counts: Signal puts U+FFFC where the mention was, Slack <@U...>
-            reply, route = self._help(m.channel, m.conversation_key, m.kind,
-                                      re.sub(r"^(?:\ufffc|<@\w+>)\s*", "", text))
+            # "@account /help" and "/help @account" count; a mention of anyone else does not
+            reply, route = self._help(m.channel, m.conversation_key, m.kind, self._without_self(m))
             if reply is not None:                                 # the gateway answers; no agent gets it
                 try:
                     self.send_message(None, {"to": {"conversation_id": cid}, "reply_to": mid,
