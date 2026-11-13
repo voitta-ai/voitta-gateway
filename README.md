@@ -134,7 +134,9 @@ adapters:
 
 - **Who gets an inbound event** (`addressed_to`): the consumer that sent the message it quotes,
   reacts to or edits; else the consumer whose name keyword is in the text (whole word, `@`
-  optional); else the conversation's default. Only that consumer's stream carries it; admin tokens
+  optional); else the conversation's default. Only consumers that read messages (their `events`
+  match `message.received`) are routed to: a quote of a send-only consumer's post (a digest)
+  falls through to the name, then the first reading consumer. Only that consumer's stream carries it; admin tokens
   see everything. `message.status` and `operation.*` go to the consumer that sent the message.
 - **Where a consumer may act**: sends, reactions, typing and history need a conversation the
   consumer serves; edits and deletes, also that it sent the message. Admin tokens are exempt.

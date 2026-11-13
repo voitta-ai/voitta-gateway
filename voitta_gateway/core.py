@@ -17,7 +17,7 @@ import httpx
 
 from .adapters.base import CallAdapter, Inbound, MessagingAdapter, Unsupported
 from .config import Config, is_account
-from .events import EventLog, ms_to_iso
+from .events import EventLog, matches, ms_to_iso
 from .store import Store, new_id
 
 log = logging.getLogger(__name__)
@@ -193,12 +193,20 @@ class Gateway:
         # A reply or quote follows the agent that sent the quoted message. An edit, delete or
         # reaction (`about`) also follows a human's message to the consumer it went to; a new
         # message quoting a human does not, so the name said in it still decides.
+        # Only to a consumer that reads messages: a send-only one (a digest poster) never would, and
+        # the quote then falls through to the name said, else the default, instead of being lost.
         if (target is not None and target["consumer"] in serving
-                and (target["direction"] == "out" or about)):
+                and (target["direction"] == "out" or about) and self._reads_messages(target["consumer"])):
             out["addressed_to"] = target["consumer"]
             return out
-        out["addressed_to"] = self._named(serving, text) or serving[0]
+        # The name said, else the default: the first serving consumer that reads messages
+        readers = [n for n in serving if self._reads_messages(n)] or serving
+        out["addressed_to"] = self._named(readers, text) or readers[0]
         return out
+
+    def _reads_messages(self, name: str) -> bool:
+        c = self.cfg.consumers.get(name)
+        return c is not None and matches("ai.voitta.message.received.v1", c.events)
 
     def _named(self, serving: list[str] | None, text: str) -> str | None:
         """The serving consumer whose name keyword comes first in the text, if any."""
