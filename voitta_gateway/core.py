@@ -197,15 +197,19 @@ class Gateway:
                 and (target["direction"] == "out" or about)):
             out["addressed_to"] = target["consumer"]
             return out
+        out["addressed_to"] = self._named(serving, text) or serving[0]
+        return out
+
+    def _named(self, serving: list[str] | None, text: str) -> str | None:
+        """The serving consumer whose name keyword comes first in the text, if any."""
         best = None
-        for name in serving:
+        for name in serving or []:
             for word in self.cfg.consumers[name].names:
                 # a whole word, optionally @-prefixed; not inside an address or a dotted name
                 m = re.search(rf"(?<![\w.@])@?{re.escape(word)}(?![\w@]|\.\w)", text or "", re.IGNORECASE)
                 if m and (best is None or m.start() < best[0]):
                     best = (m.start(), name)               # the name said first is the one addressed
-        out["addressed_to"] = best[1] if best else serving[0]
-        return out
+        return best[1] if best else None
 
     def check_scope(self, consumer: str | None, channel: str, key: dict, kind: str, op: str = "act") -> None:
         """A consumer acts (sends, reacts, types, reads history) only in conversations that it serves.
@@ -332,6 +336,10 @@ class Gateway:
         }
         if m.extra:
             data.update(m.extra)
+        if (m.kind == "group" and not m.addressed
+                and getattr(getattr(self.cfg.adapters, m.channel, None), "groups", None) == "names"
+                and self._named(self.serving(m.channel, m.conversation_key, m.kind), text)):
+            m.addressed = data["addressed"] = True              # groups: names -- saying an agent's name
         if m.kind == "group" and not m.addressed:
             return None                                           # policy: groups need a mention
         if data["addressed_to"]:
