@@ -233,10 +233,10 @@ class Gateway:
         """The listed group conversations a consumer serves, by label, so it can find the groups it
         is in without holding their ids. An entry that names no consumer is served by every one.
         `default` is the consumer an unaddressed message goes to (null when it goes to all).
-        Admin tokens, and any token when nothing is shared, see every entry. A conversation whose
-        channel has no adapter here is left out: nothing can be sent to it."""
+        Admin tokens (and an unconfigured consumer, as check_scope treats it) see every entry. A
+        conversation whose channel has no adapter here is left out: nothing can be sent to it."""
         c = self.cfg.consumers.get(consumer or "")
-        everything = c is None or "admin" in c.scopes or not self.shared
+        everything = c is None or "admin" in c.scopes
         out = []
         for label, conv in self.cfg.conversations.items():
             if conv.channel not in self.messaging:

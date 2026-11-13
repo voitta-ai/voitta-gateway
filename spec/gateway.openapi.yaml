@@ -616,8 +616,9 @@ components:
       properties:
         label: {type: string, description: "the key in gateway.yaml `conversations`; events carry it as `conversation`"}
         channel: {$ref: "#/components/schemas/ChannelName"}
-        consumers: {type: array, items: {type: string}, description: "serving consumers, default first; empty = all"}
+        consumers: {type: array, items: {type: string}, description: "serving consumers in configured order; empty = all; see `default`"}
         default: {type: [string, "null"], description: "who an unaddressed message goes to; null = every consumer"}
+
     Channel:
       type: object
       required: [channel, account, messaging, calls, up]

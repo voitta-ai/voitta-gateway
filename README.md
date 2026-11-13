@@ -119,8 +119,9 @@ gating happens at read time because Signal offers none earlier: anyone
 ## Several agents on one account
 
 One Signal account (or Slack app) can serve several consumers. `conversations:` maps each group
-to the consumers that serve it, default first; its label is also the alias they send to, so group
-ids stay in gateway.yaml. DMs go to the adapter's `direct_consumer`.
+to the consumers that serve it (the first that reads messages is the default); its label is also
+the alias they send to, so group ids stay in gateway.yaml. A consumer finds its labels with
+`GET /v1/conversations`. DMs go to the adapter's `direct_consumer`.
 
 ```yaml
 consumers:
