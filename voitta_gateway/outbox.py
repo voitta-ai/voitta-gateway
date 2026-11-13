@@ -67,7 +67,7 @@ class Outbox:
         op, payload, oid, cid = row["op"], json.loads(row["payload"]), row["message_id"], row["conversation_id"]
         src = self.gw.source(adapter.name)
         sent = store.message(oid) if op == "send" else None
-        who = {"addressed_to": sent["consumer"] if sent else payload.get("consumer")}   # the sender only
+        who = {"addressed_to": (sent["consumer"] if sent else payload.get("consumer")) or ""}   # the sender only
         if sent:
             who["person_id"] = self.gw.peer_person(cid)
         try:

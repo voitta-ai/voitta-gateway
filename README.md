@@ -125,7 +125,8 @@ the alias they send to, so group ids stay in gateway.yaml. A consumer finds its 
 
 ```yaml
 consumers:
-  shmobster: {token_secret: TOKEN_SHMOBSTER, scopes: [events:read, messages:send], names: [ada], label: Ada}
+  shmobster: {token_secret: TOKEN_SHMOBSTER, scopes: [events:read, messages:send], names: [ada], label: Ada,
+              about: "general assistant"}
   leads:     {token_secret: TOKEN_LEADS,     scopes: [events:read, messages:send], names: [leadbot]}
 conversations:
   team: {channel: signal, key: "<group-id>", consumers: [leads, shmobster]}
@@ -142,6 +143,15 @@ adapters:
 - **Where a consumer may act**: sends, reactions, typing and history need a conversation the
   consumer serves; edits and deletes, also that it sent the message. Admin tokens are exempt.
 - **`label`** is prefixed to the consumer's text (`Ada: ...`), so people can tell agents apart.
+- **`/help`.** On a shared account one sender name hides several agents, so the gateway answers
+  a message that is exactly `/help` itself, from senders it lets through: the agents serving that
+  conversation, each with its `about` line and how to reach it, then "Say /help <agent-name> to
+  describe an agent." It reaches no agent as a message (both stay in Signal's recorded history,
+  and "@account /help" counts too). If the reply cannot be sent (an opted-out DM, over the size
+  limit) the message goes on to the agent as usual. `/help <name>` (a consumer's name keyword, `label` or key)
+  goes to that agent as a message addressed to it, so the agent describes itself; an agent that
+  does not read messages is described by the gateway from its `about`. The gateway's own replies
+  and their status events go to admin tokens only.
 - **Reaching an agent in a group.** Under `groups: mention` (the default) a group message reaches
   an agent only if it @mentions the shared account or quotes one of its messages. Under
   `groups: names` a serving agent's name keyword also counts ("ada, what's next?"), so people can
