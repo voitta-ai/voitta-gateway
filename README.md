@@ -134,7 +134,9 @@ adapters:
 
 - **Who gets an inbound event** (`addressed_to`): the consumer that sent the message it quotes,
   reacts to or edits; else the consumer whose name keyword is in the text (whole word, `@`
-  optional); else the conversation's default. Only that consumer's stream carries it; admin tokens
+  optional); else the conversation's default. Only consumers that read messages (their `events`
+  match `message.received`) are routed to: a quote of a send-only consumer's post (a digest)
+  falls through to the name, then the first reading consumer. Only that consumer's stream carries it; admin tokens
   see everything. `message.status` and `operation.*` go to the consumer that sent the message.
 - **Where a consumer may act**: sends, reactions, typing and history need a conversation the
   consumer serves; edits and deletes, also that it sent the message. Admin tokens are exempt.
@@ -144,7 +146,9 @@ adapters:
   `groups: names` a serving agent's name keyword also counts ("ada, what's next?"), so people can
   address an agent by the name it signs with rather than by the account's profile name. The name
   must stand as a word said to someone: inside a URL, path, `#tag`, `host:port` or a hyphenated
-  or dotted name it does not count. Other chatter still reaches no one, and a group whose entry
+  or dotted name it does not count. A sentence that names the agent ("ada's build broke") does
+  reach it: names mode cannot tell talking about an agent from talking to it. Other chatter
+  still reaches no one, and a group whose entry
   names no `consumers` has no names to match.
 - **DMs** go to the consumer that last sent into that conversation, else `direct_consumer`. Any
   consumer may start a DM that has no messages yet; only the consumers serving a DM act in it.
