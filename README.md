@@ -143,6 +143,19 @@ adapters:
 - **Where a consumer may act**: sends, reactions, typing and history need a conversation the
   consumer serves; edits and deletes, also that it sent the message. Admin tokens are exempt.
 - **`label`** is prefixed to the consumer's text (`Ada: ...`), so people can tell agents apart.
+- **Groups that admit their members (Signal only).** `admit: members` on a conversation lets
+  every member's message through without the inbound allowlist, but only while the group was
+  last seen closed (re-read in the background every 30 s, one group at a time, which makes
+  signal-cli refresh it from the server; a read older than 90 s counts as unknown). Messages
+  replayed at startup, and any in the second or two before the first read after signal-cli
+  connects, go to the allowlist. A group that is open, or whose state cannot be read, falls back
+  to the allowlist for every consumer. signal-cli drops group messages from non-members as far
+  as its own copy of the group knows; keeping the group closed is the maintainer's job. `GET /v1/conversations/{label}/members` (for consumers serving it) lists the
+  members -- account id, admin, `person_id` and `agent` from `persons`, never a profile name --
+  and says whether the group is `open`: a group link is on (signal-cli cannot tell whether it
+  needs approval), or members other than admins can add members. A consumer can refuse to serve
+  an open group. `persons` entries take `agent: true` for other agents, so a consumer can limit
+  how often it answers them.
 - **`/help`.** On a shared account one sender name hides several agents, so the gateway answers
   a message that is exactly `/help` itself, from senders it lets through: the agents serving that
   conversation, each with its `about` line and how to reach it, then "Say /help <agent-name> to

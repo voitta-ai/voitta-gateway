@@ -12,6 +12,10 @@ class PermanentError(Exception):
     """The platform refused; retrying will not help (bad recipient, unsupported...)."""
 
 
+class NotMember(PermanentError):
+    """The account is not a member of that group."""
+
+
 class Unsupported(PermanentError):
     pass
 
@@ -60,6 +64,10 @@ class MessagingAdapter:
     async def history(self, key: dict, thread_platform_id: str | None, limit: int) -> list[dict]:
         """Newest-last list of {platform_id, sender: {id, kind, name?}, parts, time, thread}."""
         raise Unsupported("history")
+
+    async def group_info(self, key: dict) -> dict:
+        """{"members": [{"id", "number", "admin"}], "open": [reasons the group is open]}."""
+        raise Unsupported(f"{self.name} cannot list a group's members")
 
     def direct_key(self, address: str) -> dict:
         """Conversation key for a 1:1 conversation with `address` (agent-initiated sends)."""

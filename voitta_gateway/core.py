@@ -15,7 +15,7 @@ import time
 
 import httpx
 
-from .adapters.base import CallAdapter, Inbound, MessagingAdapter, Unsupported
+from .adapters.base import CallAdapter, Inbound, MessagingAdapter, NotMember, Unsupported
 from .config import Config, is_account
 from .events import EventLog, matches, ms_to_iso
 from .store import Store, new_id
@@ -103,7 +103,12 @@ class Gateway:
         return f"/gateway/{channel}"
 
     # ================================================================ policy
-    def allowed(self, channel: str, sender_id: str, person_id: str | None) -> bool:
+    def allowed(self, channel: str, sender_id: str, person_id: str | None,
+                key: dict | None = None, kind: str | None = None) -> bool:
+        if kind == "group" and key is not None:
+            label = self.listed(channel, key)
+            if label and self.cfg.conversations[label].admit == "members" and self._seen_closed(label):
+                return True                       # a member of a group last seen closed
         al = self.cfg.policy.inbound_allowlist
         if al == "*" or (person_id and person_id in al):
             return True
@@ -333,6 +338,75 @@ class Gateway:
             how = " or ".join(ways) or "reply to one of its messages"
         return f"{out} ({how})"
 
+    # ---------------------------------------------------------------- admit: members
+    # Members are admitted only while the group was last seen closed, so a group
+    # opened from a phone (link on, anyone may add) falls back to the allowlist for
+    # every consumer, not only for those that check. Unknown or stale is not closed.
+    # The reads happen in _openness_loop, never on the inbound path: that runs
+    # inside signal-cli's reader, which is the only thing that could read the reply.
+    _OPENNESS_EVERY = 30.0
+    _OPENNESS_TTL = 90.0
+
+    def _seen_closed(self, label: str) -> bool:
+        hit = getattr(self, "_openness", {}).get(label)
+        return bool(hit) and time.time() - hit[0] < self._OPENNESS_TTL and not hit[1]
+
+    async def _openness_loop(self) -> None:
+        """Re-read every `admit: members` group's openness, every _OPENNESS_EVERY seconds."""
+        labels = [l for l, c in self.cfg.conversations.items() if c.admit == "members"]
+        unreadable: set[str] = set()
+        while labels:
+            failed = False
+            for label in labels:
+                try:
+                    await self._group_info(label)
+                except Exception as exc:          # noqa: BLE001 -- unknown admits no one by membership
+                    failed = True
+                    if label in getattr(self, "_openness", {}) or label not in unreadable:
+                        log.warning("group %s: could not read its openness (%s); members not admitted",
+                                    label, type(exc).__name__)   # once per change, not every 2 s
+                    unreadable.add(label)
+                    getattr(self, "_openness", {}).pop(label, None)
+                else:
+                    unreadable.discard(label)
+            # Soon again after a failure: at startup signal-cli is not connected yet.
+            await asyncio.sleep(2.0 if failed else self._OPENNESS_EVERY)
+
+    async def _group_info(self, label: str) -> dict:
+        conv = self.cfg.conversations[label]
+        info = await self.adapter(conv.channel).group_info({GROUP_KEY.get(conv.channel, "group"): conv.key})
+        if not hasattr(self, "_openness"):
+            self._openness = {}
+        self._openness[label] = (time.time(), list(info["open"]))
+        return info
+
+    async def members(self, label: str, consumer: str | None) -> dict:
+        """A listed group's members and how open it is, for a consumer that serves it. Names
+        come from `persons` only, never from profiles: anyone can call themselves anything."""
+        if label not in {c["label"] for c in self.conversations(consumer)}:
+            raise ApiError(404, "unknown_conversation", label)
+        conv = self.cfg.conversations[label]
+        try:
+            try:
+                info = await self._group_info(label)
+            except Exception:
+                getattr(self, "_openness", {}).pop(label, None)   # a failed read is not "still closed"
+                raise
+        except Unsupported as exc:
+            raise ApiError(422, "unsupported", str(exc))
+        except NotMember as exc:
+            raise ApiError(409, "not_member", str(exc))
+        except Exception as exc:                  # signal-cli down, slow or refusing: retry later
+            raise ApiError(503, "unavailable", type(exc).__name__)
+        out = []
+        for mem in info["members"]:
+            pid = self.identity.lookup(conv.channel, mem["id"], mem.get("number"))
+            p = self.cfg.persons.get(pid) if pid else None
+            out.append({"id": mem["id"], "admin": mem["admin"], "self": bool(mem.get("self")),
+                        "person_id": pid, "agent": bool(p and p.agent)})
+        return {"label": label, "admit": conv.admit, "members": out,
+                "open": bool(info["open"]), "reasons": info["open"]}
+
     def check_scope(self, consumer: str | None, channel: str, key: dict, kind: str, op: str = "act") -> None:
         """A consumer acts (sends, reacts, types, reads history) only in conversations that it serves.
         A direct conversation with no messages yet may be started by any consumer, which then serves
@@ -458,7 +532,7 @@ class Gateway:
         }
         if m.extra:
             data.update(m.extra)
-        if self.allowed(m.channel, m.sender["id"], person):
+        if self.allowed(m.channel, m.sender["id"], person, m.conversation_key, m.kind):
             # "@account /help" and "/help @account" count; a mention of anyone else does not
             reply, route = self._help(m.channel, m.conversation_key, m.kind, self._without_self(m))
             if reply is not None:                                 # the gateway answers; no agent gets it
@@ -480,7 +554,7 @@ class Gateway:
             return None                                           # policy: groups need a mention
         if data["addressed_to"]:
             self.store.set_message(mid, consumer=data["addressed_to"])   # its edits and reactions follow it
-        if not self.allowed(m.channel, m.sender["id"], person):
+        if not self.allowed(m.channel, m.sender["id"], person, m.conversation_key, m.kind):
             hid = new_id("held")
             self.store.x("INSERT INTO held VALUES (?,?,?,?,?,?,?,?)", hid, m.channel, m.sender["id"],
                          cid, "message.received", json.dumps(data), ms_to_iso(m.time_ms), time.time())
@@ -517,7 +591,7 @@ class Gateway:
             return None
         cid = self.conv_id(channel, key, kind)
         person = self.identity.lookup(channel, sender_id)
-        if not self.allowed(channel, sender_id, person):
+        if not self.allowed(channel, sender_id, person, key, kind):
             return None
         return cid, person
 
@@ -917,6 +991,8 @@ class Gateway:
         self.start_tasks = [asyncio.create_task(self._start_adapter(a), name=f"start-{a.name}")
                             for a in list(self.messaging.values())
                             + [v for k, v in self.voice.items() if k not in self.messaging]]
+        # With the startup tasks, so an embedded gateway's stop() cancels it too.
+        self.start_tasks.append(asyncio.create_task(self._openness_loop(), name="group-openness"))
 
     async def _start_adapter(self, a) -> None:
         try:

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import model_validator, BaseModel, Field, field_validator
 
 
 def clean_address(value: str) -> str:
@@ -141,6 +141,8 @@ class Person(BaseModel):
     signal: list[str] = []                          # ACI (UUID) and/or E.164
     slack: list[str] = []                           # U123 or T123/U123
     phone: list[str] = []                           # E.164
+    agent: bool = False                             # an agent, not a person: consumers may limit
+                                                    # how often they answer it (loop guards)
 
     @field_validator("signal", "slack", "phone")
     @classmethod
@@ -162,6 +164,19 @@ class Conversation(BaseModel):
                                                     # the first that reads messages is the default addressee (#1 item 3).
                                                     # The label is also the send alias
                                                     # (`to: {conversation: label}`).
+    # Who gets through. allowlist: the policy's inbound_allowlist and approvals,
+    # as for DMs. members: anyone in the group -- the platform only delivers a
+    # member's message -- so keeping the group closed (no open link, only admins
+    # add members) is the maintainer's job, as it is for a private Slack channel.
+    # GET /v1/conversations/{label}/members reports how closed it is.
+    admit: Literal["allowlist", "members"] = "allowlist"
+
+    @model_validator(mode="after")
+    def _admit_signal_only(self):
+        # A Slack channel can be public to the whole workspace, and its openness cannot be read.
+        if self.admit == "members" and self.channel != "signal":
+            raise ValueError("admit: members is for Signal groups only")
+        return self
 
     @field_validator("key")
     @classmethod

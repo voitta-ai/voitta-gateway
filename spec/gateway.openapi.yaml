@@ -72,6 +72,42 @@ paths:
                   conversations: {type: array, items: {$ref: "#/components/schemas/ListedConversation"}}
         default: {$ref: "#/components/responses/Error"}
 
+  /v1/conversations/{label}/members:
+    get:
+      operationId: listMembers
+      summary: A listed group's members and whether it is open
+      description: >-
+        For a consumer that serves the conversation (Signal). Members carry the account id (the ACI, or the number when signal-cli has no ACI), the
+        admin flag, and `person_id`/`agent` from `persons` (never a profile name). `open` is true
+        when a group link is on or members other than admins can add members; `reasons` says which.
+      x-scope: events:read
+      parameters: [{name: label, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [label, admit, members, open, reasons]
+                properties:
+                  label: {type: string}
+                  admit: {type: string, enum: [allowlist, members]}
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, admin, self, person_id, agent]
+                      properties:
+                        id: {type: string}
+                        admin: {type: boolean}
+                        self: {type: boolean, description: "this account"}
+                        person_id: {type: [string, "null"]}
+                        agent: {type: boolean}
+                  open: {type: boolean}
+                  reasons: {type: array, items: {type: string}}
+        default: {$ref: "#/components/responses/Error"}
+
   /v1/identities/{person_id}:
     get:
       operationId: getIdentity
@@ -598,7 +634,8 @@ components:
                 agent_not_connected, call_ended, emergency_number_blocked,
                 forbidden_conversation, not_listed, not_yours (403: outside the consumer's conversations),
                 too_long, bad_text, bad_styles, bad_mentions, bad_parts, bad_wait (422), deleted (409),
-                send_failed (502, with wait_s), key_reused (409: an idempotency_key from another kind of request), message_gone (409: the key's message no longer exists)
+                send_failed (502, with wait_s), key_reused (409: an idempotency_key from another kind of request), message_gone (409: the key's message no longer exists),
+                not_member (409: the account is not in that group), unavailable (503: group state could not be read; retry)
             message: {type: string}
 
     ChannelName: {type: string, enum: [signal, slack, phone]}

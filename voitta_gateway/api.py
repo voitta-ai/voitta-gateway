@@ -98,6 +98,10 @@ def build_api(gw: Gateway) -> FastAPI:
     async def conversations(p: Principal = Depends(need("events:read"))):
         return {"conversations": gw.conversations(p.name)}
 
+    @app.get("/v1/conversations/{label}/members")
+    async def members(label: str, p: Principal = Depends(need("events:read"))):
+        return await gw.members(label, p.name)
+
     @app.get("/v1/identities/{person_id}")
     async def identity(person_id: str, p: Principal = Depends(need("events:read"))):
         return {"person_id": person_id, "addresses": gw.identity.addresses(person_id)}
