@@ -15,7 +15,7 @@ import time
 
 import httpx
 
-from .adapters.base import CallAdapter, Inbound, MessagingAdapter, PermanentError, Unsupported
+from .adapters.base import CallAdapter, Inbound, MessagingAdapter, NotMember, Unsupported
 from .config import Config, is_account
 from .events import EventLog, matches, ms_to_iso
 from .store import Store, new_id
@@ -107,8 +107,8 @@ class Gateway:
                 key: dict | None = None, kind: str | None = None) -> bool:
         if kind == "group" and key is not None:
             label = self.listed(channel, key)
-            if label and self.cfg.conversations[label].admit == "members":
-                return True                       # a member of a group the maintainer keeps closed
+            if label and self.cfg.conversations[label].admit == "members" and self._seen_closed(label):
+                return True                       # a member of a group last seen closed
         al = self.cfg.policy.inbound_allowlist
         if al == "*" or (person_id and person_id in al):
             return True
@@ -338,27 +338,59 @@ class Gateway:
             how = " or ".join(ways) or "reply to one of its messages"
         return f"{out} ({how})"
 
+    # ---------------------------------------------------------------- admit: members
+    # Members are admitted only while the group was last seen closed, so a group
+    # opened from a phone (link on, anyone may add) falls back to the allowlist for
+    # every consumer, not only for those that check. Unknown is not closed.
+    _OPENNESS_TTL = 60.0
+
+    def _seen_closed(self, label: str) -> bool:
+        hit = getattr(self, "_openness", {}).get(label)
+        return bool(hit) and time.time() - hit[0] < self._OPENNESS_TTL * 5 and not hit[1]
+
+    async def _group_info(self, label: str) -> dict:
+        conv = self.cfg.conversations[label]
+        info = await self.adapter(conv.channel).group_info({GROUP_KEY.get(conv.channel, "group"): conv.key})
+        if not hasattr(self, "_openness"):
+            self._openness = {}
+        self._openness[label] = (time.time(), list(info["open"]))
+        return info
+
+    async def refresh_openness(self, channel: str, key: dict, kind: str) -> None:
+        """Before admitting by membership: re-read a stale group's openness. A failure leaves it
+        unknown, which admits no one by membership."""
+        label = self.listed(channel, key) if kind == "group" else None
+        if not label or self.cfg.conversations[label].admit != "members":
+            return
+        hit = getattr(self, "_openness", {}).get(label)
+        if hit and time.time() - hit[0] < self._OPENNESS_TTL:
+            return
+        try:
+            await self._group_info(label)
+        except Exception as exc:                  # noqa: BLE001
+            log.warning("group %s: could not read its openness (%s); members not admitted",
+                        label, type(exc).__name__)
+            getattr(self, "_openness", {}).pop(label, None)
+
     async def members(self, label: str, consumer: str | None) -> dict:
         """A listed group's members and how open it is, for a consumer that serves it. Names
         come from `persons` only, never from profiles: anyone can call themselves anything."""
         if label not in {c["label"] for c in self.conversations(consumer)}:
             raise ApiError(404, "unknown_conversation", label)
         conv = self.cfg.conversations[label]
-        adapter = self.adapter(conv.channel)
         try:
-            info = await adapter.group_info({GROUP_KEY.get(conv.channel, "group"): conv.key})
+            info = await self._group_info(label)
         except Unsupported as exc:
             raise ApiError(422, "unsupported", str(exc))
-        except PermanentError as exc:
+        except NotMember as exc:
             raise ApiError(409, "not_member", str(exc))
-        except Exception as exc:                  # signal-cli down or slow: the caller retries
+        except Exception as exc:                  # signal-cli down, slow or refusing: retry later
             raise ApiError(503, "unavailable", type(exc).__name__)
-        me = getattr(adapter, "me", None)
         out = []
         for mem in info["members"]:
             pid = self.identity.lookup(conv.channel, mem["id"], mem.get("number"))
             p = self.cfg.persons.get(pid) if pid else None
-            out.append({"id": mem["id"], "admin": mem["admin"], "self": mem["id"] == me,
+            out.append({"id": mem["id"], "admin": mem["admin"], "self": bool(mem.get("self")),
                         "person_id": pid, "agent": bool(p and p.agent)})
         return {"label": label, "admit": conv.admit, "members": out,
                 "open": bool(info["open"]), "reasons": info["open"]}
@@ -488,6 +520,7 @@ class Gateway:
         }
         if m.extra:
             data.update(m.extra)
+        await self.refresh_openness(m.channel, m.conversation_key, m.kind)
         if self.allowed(m.channel, m.sender["id"], person, m.conversation_key, m.kind):
             # "@account /help" and "/help @account" count; a mention of anyone else does not
             reply, route = self._help(m.channel, m.conversation_key, m.kind, self._without_self(m))

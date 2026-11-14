@@ -24,7 +24,7 @@ from pathlib import Path
 
 from .. import scrub
 from ..config import SignalConfig, host_port, is_account
-from .base import CallAdapter, Inbound, MessagingAdapter, PermanentError, Unsupported
+from .base import CallAdapter, Inbound, MessagingAdapter, NotMember, PermanentError, Unsupported
 
 log = logging.getLogger(__name__)
 
@@ -454,12 +454,19 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
     async def group_info(self, key: dict) -> dict:
         """Members and openness from signal-cli. A group is open when it has a link (signal-cli
         does not say whether joining through it needs approval) or any member may add members."""
-        groups = await self._rpc("listGroups", detailed=True)
+        # One group, which makes signal-cli refresh it from the server first: a link or
+        # permission changed on a phone is seen now, not when its update envelope arrives.
+        groups = await self._rpc("listGroups", timeout=15, detailed=True, groupId=key.get("group"))
         g = next((x for x in groups or [] if x.get("id") == key.get("group")), None)
         if g is None or not g.get("isMember", True):
-            raise PermanentError("the account is not a member of that group")
-        members = [{"id": m.get("uuid") or m.get("number"), "number": m.get("number"),
-                    "admin": bool(m.get("isAdmin"))} for m in g.get("members") or []]
+            raise NotMember("the account is not a member of that group")
+        admins = {a.get("uuid") or a.get("number") for a in g.get("admins") or []}
+        members = []
+        for m in g.get("members") or []:
+            mid = m.get("uuid") or m.get("number")
+            members.append({"id": mid, "number": m.get("number"),
+                            "admin": bool(m.get("isAdmin")) or mid in admins,
+                            "self": self._author(m.get("uuid"), m.get("number")) == self.me})
         reasons = []
         if g.get("groupInviteLink"):
             reasons.append("the group link is on")
@@ -467,11 +474,11 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             reasons.append("members other than admins can add members")
         return {"members": [m for m in members if m["id"]], "open": reasons}
 
-    async def _rpc(self, method: str, **params):
+    async def _rpc(self, method: str, timeout: float = 60, **params):
         if not self.rpc:
             raise ConnectionError("signal-cli is not connected")
         try:
-            return await self.rpc.call(method, **params)
+            return await self.rpc.call(method, timeout=timeout, **params)
         except RpcError as e:
             msg = str(e).lower()
             if any(w in msg for w in ("network", "timeout", "rate limit", "temporar")):

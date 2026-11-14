@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import model_validator, BaseModel, Field, field_validator
 
 
 def clean_address(value: str) -> str:
@@ -170,6 +170,13 @@ class Conversation(BaseModel):
     # add members) is the maintainer's job, as it is for a private Slack channel.
     # GET /v1/conversations/{label}/members reports how closed it is.
     admit: Literal["allowlist", "members"] = "allowlist"
+
+    @model_validator(mode="after")
+    def _admit_signal_only(self):
+        # A Slack channel can be public to the whole workspace, and its openness cannot be read.
+        if self.admit == "members" and self.channel != "signal":
+            raise ValueError("admit: members is for Signal groups only")
+        return self
 
     @field_validator("key")
     @classmethod

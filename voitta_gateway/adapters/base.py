@@ -12,6 +12,10 @@ class PermanentError(Exception):
     """The platform refused; retrying will not help (bad recipient, unsupported...)."""
 
 
+class NotMember(PermanentError):
+    """The account is not a member of that group."""
+
+
 class Unsupported(PermanentError):
     pass
 
