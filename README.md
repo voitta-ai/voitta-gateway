@@ -147,7 +147,8 @@ adapters:
   every member's message through without the inbound allowlist, but only while the group was
   last seen closed (re-read in the background every 30 s, one group at a time, which makes
   signal-cli refresh it from the server; a read older than 90 s counts as unknown). Messages
-  replayed at startup, before the first read, go to the allowlist. A group that is open, or whose state cannot be read, falls back
+  replayed at startup, and any in the second or two before the first read after signal-cli
+  connects, go to the allowlist. A group that is open, or whose state cannot be read, falls back
   to the allowlist for every consumer. signal-cli drops group messages from non-members as far
   as its own copy of the group knows; keeping the group closed is the maintainer's job. `GET /v1/conversations/{label}/members` (for consumers serving it) lists the
   members -- account id, admin, `person_id` and `agent` from `persons`, never a profile name --

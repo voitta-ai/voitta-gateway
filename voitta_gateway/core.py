@@ -354,6 +354,7 @@ class Gateway:
     async def _openness_loop(self) -> None:
         """Re-read every `admit: members` group's openness, every _OPENNESS_EVERY seconds."""
         labels = [l for l, c in self.cfg.conversations.items() if c.admit == "members"]
+        unreadable: set[str] = set()
         while labels:
             failed = False
             for label in labels:
@@ -361,9 +362,13 @@ class Gateway:
                     await self._group_info(label)
                 except Exception as exc:          # noqa: BLE001 -- unknown admits no one by membership
                     failed = True
-                    log.warning("group %s: could not read its openness (%s); members not admitted",
-                                label, type(exc).__name__)
+                    if label in getattr(self, "_openness", {}) or label not in unreadable:
+                        log.warning("group %s: could not read its openness (%s); members not admitted",
+                                    label, type(exc).__name__)   # once per change, not every 2 s
+                    unreadable.add(label)
                     getattr(self, "_openness", {}).pop(label, None)
+                else:
+                    unreadable.discard(label)
             # Soon again after a failure: at startup signal-cli is not connected yet.
             await asyncio.sleep(2.0 if failed else self._OPENNESS_EVERY)
 
