@@ -10,12 +10,18 @@
 # a host named by its last octet alone ("live on <dot>NNN", "ssh <dot>NNN").
 #
 # That last one is here because the IP patterns below all require a full dotted
-# quad, so a repo that refers to its host as ".212" passes every one of them.
+# quad, so a project that names a machine by its last octet alone passes all of
+# them.
 # Measured 2026-11-15 in this repo: 28 such references, in the README's
 # first paragraph and in five rendered diagrams, through a gate that scanned
 # those exact files and printed clean. The pattern needs a preposition before
 # the octet and two or three digits in it, which is what keeps CSS lengths,
-# format specifiers and version fragments out. Note the examples above are
+# format specifiers and version fragments out. One shape still slips through as
+# noise: a two-digit decimal after a preposition ("rounded to <dot>25 of a
+# second").
+# Judge those by context rather than widening the pattern further.
+#
+# Note the examples above are
 # written with <dot> on purpose: this script is itself inside the paths CI
 # scans, so a comment holding a literal example makes the gate fail on its
 # own documentation.
@@ -77,7 +83,7 @@ private-ip-10|(^|[^0-9])10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}
 private-ip-192|(^|[^0-9])192\.168\.[0-9]{1,3}\.[0-9]{1,3}
 private-ip-172|(^|[^0-9])172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}
 internal-domain|[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.(internal|corp|intranet)\b
-bare-octet-host|(^|[^A-Za-z0-9_.])(on|to|at|from|host|ssh|scp|via) \.[0-9]{2,3}([^0-9]|$)
+bare-octet-host|(^|[^A-Za-z0-9_.])(on|to|at|from|host|ssh|scp|via|as|is) [\"']?\.[0-9]{2,3}([^0-9]|$)
 "
 
 status=0
