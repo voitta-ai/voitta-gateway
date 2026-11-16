@@ -211,7 +211,7 @@ def seq_call() -> SVG:
 # ----------------------------------------------------------------------------
 def seq_ask() -> SVG:
     s = SVG(1240, 1100, "voitta-ask flow")
-    corner_status(s, "live", "real Signal calls on .212; times from the call to Nadya")
+    corner_status(s, "live", "real Signal calls on the POC host; times from one answered call")
     q = Sequence(s, [
         ("cl", "Client\nany service · examples/ask.py", "consumer"),
         ("ask", "voitta-ask\nPiper · Whisper (GPU)", "consumer"),
@@ -285,10 +285,10 @@ def seq_slack_call() -> SVG:
 
 
 # ----------------------------------------------------------------------------
-# 5. The POC as it runs on .212
+# 5. The POC as it runs on the POC host
 # ----------------------------------------------------------------------------
 def deployment_poc() -> SVG:
-    s = SVG(1200, 720, "POC deployment on .212")
+    s = SVG(1200, 720, "POC deployment")
     s.text(40, 34, "<gpu-host> · Ubuntu 22.04 · RTX 3090 24 GB · 16 cores · 62 GB",
            size=15, weight="bold", anchor="start")
     s.rect(30, 46, 830, 640, "host", rx=14, sw=2)
@@ -333,7 +333,7 @@ def deployment_poc() -> SVG:
     s.box(900, 90, 250, 80, "Client", ["ssh + curl or examples/ask.py"], kind="platform", title_size=13)
     s.box(900, 240, 250, 80, "Signal servers", ["messages · call signalling · TURN"], kind="platform",
           title_size=13)
-    s.box(900, 400, 250, 80, "Callees", ["Roman · Nadya (Signal app)"], kind="platform", title_size=13)
+    s.box(900, 400, 250, 80, "Callees", ["Two callees (Signal app)"], kind="platform", title_size=13)
     s.arrow([(900, 130), (830, 130)], label="POST /v1/asks", label_at=(865, 120))
     s.arrow([(830, 270), (900, 270)], both=True)
     s.arrow([(830, 440), (870, 440), (870, 300), (900, 300)], both=True, color=GREEN,
@@ -444,7 +444,7 @@ FIGURES = {
     "seq-call": (seq_call, "Inbound call (same flow for phone and Signal)"),
     "seq-ask": (seq_ask, "voitta-ask: text spoken on a call, answer transcribed (live)"),
     "seq-slack-call": (seq_slack_call, "Outbound Slack call through the browser join page"),
-    "deployment-poc": (deployment_poc, "The POC as it runs on .212"),
+    "deployment-poc": (deployment_poc, "The POC as it runs"),
     "deployment": (deployment, "Target deployment on one Linux server"),
     "roadmap": (roadmap, "Roadmap and progress"),
 }

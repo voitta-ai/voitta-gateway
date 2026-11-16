@@ -28,12 +28,12 @@ not yet on a live workspace.** Details and figures: section 7 of
 | Phase | Scope | Status |
 |---|---|---|
 | S1 Messaging | watchdog, safe downloads, bot posts with `sender.kind`, @here, `blocks` parts, `interaction.received`, history API, manifest | tested (simulated Slack) |
-| S2 Voice clips | audio parts with `clip`, `duration_s`, `transcript` (Slack's, else voitta-speech); policy before transcription | tested; real AAC/Opus clips transcribed on .212 |
+| S2 Voice clips | audio parts with `clip`, `duration_s`, `transcript` (Slack's, else voitta-speech); policy before transcription | tested; real AAC/Opus clips transcribed on the POC host |
 | S3 Calls | `via: slack`, DM card, join page (AudioWorklet capture + jitter-buffered player, barge-in), ring timeout, reload grace, card updates | tested; page run in headless Chrome with a fake microphone |
 
 ## To go live
 
 1. Create the Voitta app from the manifest; put `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` in `.env`.
-2. Add `adapters.slack` to gateway.yaml on .212 (see `gateway.example.yaml`); invite the bot.
-3. For calls: a public HTTPS name for the gateway's ingress (reverse proxy or tunnel to .212),
+2. Add `adapters.slack` to gateway.yaml on the POC host (see `gateway.example.yaml`); invite the bot.
+3. For calls: a public HTTPS name for the gateway's ingress (reverse proxy or tunnel to the POC host),
    set as `adapters.slack.calls.public_base_url`, and `listen.ingress`.

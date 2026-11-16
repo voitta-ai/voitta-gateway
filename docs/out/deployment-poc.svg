@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720">
-  <title>POC deployment on .212</title>
+  <title>POC deployment</title>
   <rect width="100%" height="100%" fill="#ffffff"/>
   <text x="40" y="34" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" text-anchor="start" fill="#18181b">&lt;gpu-host&gt; · Ubuntu 22.04 · RTX 3090 24 GB · 16 cores · 62 GB</text>
   <rect x="30" y="46" width="830" height="640" rx="14" fill="#fbfbfc" stroke="#3f3f46" stroke-width="2"/>
@@ -85,7 +85,7 @@
   <text x="1025.0" y="293.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">messages · call signalling · TURN</text>
   <rect x="900" y="400" width="250" height="80" rx="8" fill="#ffffff" stroke="#27272a" stroke-width="1.5"/>
   <text x="1025.0" y="436.75" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="#18181b">Callees</text>
-  <text x="1025.0" y="453.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">Roman · Nadya (Signal app)</text>
+  <text x="1025.0" y="453.25" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="middle" fill="#52525b">Two callees (Signal app)</text>
   <polyline points="900,130 830,130" fill="none" stroke="#3f3f46" stroke-width="1.6" stroke-linejoin="round"/>
   <polygon points="830,130 838.2,126.3 838.2,133.7" fill="#3f3f46"/>
   <rect x="821.0" y="110.0" width="88.1" height="16" fill="#ffffff" fill-opacity="0.92"/>
@@ -103,8 +103,8 @@
   <polygon points="1025,320 1028.7,328.2 1021.3,328.2" fill="#3f3f46"/>
   <rect x="40.0" y="696" width="37.6" height="16" rx="8" fill="#15803d"/>
   <text x="58.8" y="708" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
-  <text x="85.6" y="708" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built; tested end to end on real Signal calls (.212)</text>
-  <rect x="412.6" y="696" width="56.8" height="16" rx="8" fill="#b45309"/>
-  <text x="441.0" y="708" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PARTIAL</text>
-  <text x="477.36000000000007" y="708" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built in part (see text)</text>
+  <text x="85.6" y="708" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built; tested end to end on real Signal calls (on the POC host)</text>
+  <rect x="478.3" y="696" width="56.8" height="16" rx="8" fill="#b45309"/>
+  <text x="506.7" y="708" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PARTIAL</text>
+  <text x="543.14" y="708" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built in part (see text)</text>
 </svg>

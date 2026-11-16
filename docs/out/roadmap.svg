@@ -44,14 +44,14 @@
   <text x="600" y="296" font-family="Helvetica, Arial, sans-serif" font-size="12.5" font-weight="normal" text-anchor="middle" fill="#52525b" font-style="italic">Voice first: the CallSession interface comes from working calls, not from a design up front.</text>
   <rect x="20.0" y="332" width="37.6" height="16" rx="8" fill="#15803d"/>
   <text x="38.8" y="344" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">LIVE</text>
-  <text x="65.6" y="344" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built; tested end to end on real Signal calls (.212)</text>
-  <rect x="392.6" y="332" width="50.4" height="16" rx="8" fill="#2563eb"/>
-  <text x="417.8" y="344" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
-  <text x="450.96000000000004" y="344" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built; tested end to end against simulated platforms</text>
-  <rect x="777.9" y="332" width="56.8" height="16" rx="8" fill="#b45309"/>
-  <text x="806.3" y="344" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PARTIAL</text>
-  <text x="842.72" y="344" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built in part (see text)</text>
-  <rect x="1002.2" y="332" width="56.8" height="16" rx="8" fill="#9ca3af"/>
-  <text x="1030.6" y="344" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PLANNED</text>
-  <text x="1067.0400000000002" y="344" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">designed, not built</text>
+  <text x="65.6" y="344" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built; tested end to end on real Signal calls (on the POC host)</text>
+  <rect x="458.3" y="332" width="50.4" height="16" rx="8" fill="#2563eb"/>
+  <text x="483.5" y="344" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">TESTED</text>
+  <text x="516.74" y="344" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built; tested end to end against simulated platforms</text>
+  <rect x="843.7" y="332" width="56.8" height="16" rx="8" fill="#b45309"/>
+  <text x="872.1" y="344" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PARTIAL</text>
+  <text x="908.5" y="344" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">built in part (see text)</text>
+  <rect x="1068.0" y="332" width="56.8" height="16" rx="8" fill="#9ca3af"/>
+  <text x="1096.4" y="344" font-family="Helvetica, Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#ffffff">PLANNED</text>
+  <text x="1132.82" y="344" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="normal" text-anchor="start" fill="#52525b">designed, not built</text>
 </svg>

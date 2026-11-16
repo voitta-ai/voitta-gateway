@@ -167,7 +167,7 @@ def follower(svc) -> asyncio.Task:
 
 
 async def test_missed_end_event_caught_by_watchdog(setup):
-    """The Nadya bug: the call ends unanswered but the ask service never sees call.ended."""
+    """The unanswered-call bug: the call ends unanswered but the ask service never sees call.ended."""
     fake, ports, client, stt, gw, svc = setup
     ask = (await client.post("/v1/asks", json={"to": ROMAN, "text": "Hello?"})).json()
     await wait_for(lambda: fake.methods("startCall"))

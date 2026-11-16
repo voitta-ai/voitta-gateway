@@ -27,7 +27,7 @@ PALETTE = {
 }
 # Status badges: what has been built and how it was tested.
 STATUS = {
-    "live":    ("#15803d", "LIVE",    "built; tested end to end on real Signal calls (.212)"),
+    "live":    ("#15803d", "LIVE",    "built; tested end to end on real Signal calls (on the POC host)"),
     "tested":  ("#2563eb", "TESTED",  "built; tested end to end against simulated platforms"),
     "partial": ("#b45309", "PARTIAL", "built in part (see text)"),
     "planned": ("#9ca3af", "PLANNED", "designed, not built"),

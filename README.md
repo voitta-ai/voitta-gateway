@@ -4,7 +4,7 @@ One API in front of Signal, Slack and the phone network for Voitta agents.
 Design, status and POC results: [docs/out/voitta-gateway.docx](docs/out/voitta-gateway.docx).
 Formal API: [spec/](spec/) (OpenAPI 3.1 for the REST APIs, AsyncAPI 3.1 for events and media).
 
-**Status (8 Nov 2026):** outbound Signal calls and voitta-ask work live on .212; messaging,
+**Status (8 Nov 2026):** outbound Signal calls and voitta-ask work live on the POC host; messaging,
 Slack, inbound calls and the phone (Telnyx) path are built and tested against simulators.
 
 ```

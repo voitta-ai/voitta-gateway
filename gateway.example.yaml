@@ -65,7 +65,7 @@ consumers:
     scopes: [admin]
 
 persons:
-  p_roman:
+  p_owner:
     signal: ["+15551112222"]                 # ACI (UUID) and/or number
     slack: ["T0123/U0456"]
     phone: ["+15551112222"]
@@ -82,6 +82,6 @@ conversations:
     key: "<slack-channel-id>"
 
 policy:
-  inbound_allowlist: [p_roman]               # default []: everyone else is held; "*" lets everyone through
+  inbound_allowlist: [p_owner]               # default []: everyone else is held; "*" lets everyone through
   calls_allow_unknown: false
   block_emergency_numbers: true

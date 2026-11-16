@@ -29,7 +29,7 @@ before 2.72.0 have CVE-2026-113380 (the other side may keep hearing you after ha
 ## 1. Configure
 
 ```bash
-cp gateway.example.yaml gateway.yaml     # set adapters.signal.account, persons.p_roman.signal = your number
+cp gateway.example.yaml gateway.yaml     # set adapters.signal.account, persons.p_owner.signal = your number
 cp .env.example .env                     # fill TOKEN_OPS, VOITTA_MEDIA_SECRET (openssl rand -hex 32)
 alias dc='docker compose -f deploy/docker-compose.yml'
 ```

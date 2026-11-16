@@ -181,7 +181,7 @@ def build() -> Path:
               "calls, and later WhatsApp, SMS or Telegram. It runs on a Linux server, holds all platform "
               "accounts and keys, and exposes one API to the rest of the system.")
     bullets(doc, [
-        ("The proof of concept works on real calls. ", "On .212 the gateway placed Signal calls from the "
+        ("The proof of concept works on real calls. ", "On the POC host the gateway placed Signal calls from the "
          "212 number; a first voice agent, voitta-ask, read a text to the callee and returned their spoken "
          "answer as text, end to end in 17 to 28 seconds."),
         ("Two layers, not one. ", "Messaging (text, media, reactions; asynchronous) and voice (real-time "
@@ -204,7 +204,7 @@ def build() -> Path:
     doc.add_heading("2. Status (8 November 2026)", 1)
     para(doc, "Every component in this document carries one of four tags:")
     table(doc, ["Tag", "Meaning"], [
-        ["live", "Built; tested end to end on real Signal calls on .212."],
+        ["live", "Built; tested end to end on real Signal calls on the POC host."],
         ["tested", "Built; tested end to end in the automated suite against simulated platforms "
                    "(a JSON-RPC server standing in for signal-cli, signed Telnyx webhooks and media, a stubbed "
                    "Slack client), over real sockets. Not yet run against the real service."],
@@ -215,17 +215,17 @@ def build() -> Path:
     doc.add_heading("2.1 Components", 2)
     table(doc, ["Component", "Status", "Evidence / what is missing"], [
         ["Signal calls: outbound, audio both ways", "live",
-         "3 answered calls on .212 (echo, voitta-ask to Roman, voitta-ask to Nadya)"],
+         "3 answered calls on the POC host (echo, two voitta-ask calls to colleagues)"],
         ["Signal calls: inbound", "tested", "simulated only; no live inbound call yet"],
         ["Signal messaging (send, receive, receipts, reactions, edits, groups)", "tested",
          "simulated signal-cli; one message sent live via manhattan-logic's daemon"],
         ["Slack messaging: Socket Mode, watchdog, safe downloads, bots, @here, blocks, buttons, history",
          "tested", "simulated Slack Web API; needs the Voitta Slack app installed (manifest in deploy/)"],
         ["Slack voice clips -> transcripts (Slack's own, else voitta-speech)", "tested",
-         "simulated Slack; real AAC/Opus clips transcribed on .212 by the real models"],
+         "simulated Slack; real AAC/Opus clips transcribed on the POC host by the real models"],
         ["Slack calls: DM card + browser join page", "tested",
          "page run in headless Chrome with a fake microphone; needs a public HTTPS URL for live use"],
-        ["voitta-speech API (transcribe, synthesize)", "live", "running in voitta-ask on .212; 0.1-0.3 s per clip"],
+        ["voitta-speech API (transcribe, synthesize)", "live", "running in voitta-ask on the POC host; 0.1-0.3 s per clip"],
         ["Phone via Telnyx (signed webhooks, L16 media, DTMF, dial-out)", "tested",
          "simulated Telnyx incl. big-endian audio; needs a Telnyx account"],
         ["Event log, SSE + long-poll, replay, cursor reset", "live", "SQLite (WAL); used by voitta-ask live"],
@@ -247,8 +247,8 @@ def build() -> Path:
 
     doc.add_heading("2.2 POC results", 2)
     table(doc, ["Call", "Rings", "Picked up", "Listening", "Answer ends", "Transcript ready", "Result"], [
-        ["Roman", "0.3 s", "5.0 s", "9.9 s", "16.7 s", "17.0 s", "\"Hello, one, two, three, four, five.\""],
-        ["Nadya", "0.5 s", "8.5 s", "19.3 s", "27.2 s", "27.5 s",
+        ["Callee A", "0.3 s", "5.0 s", "9.9 s", "16.7 s", "17.0 s", "\"Hello, one, two, three, four, five.\""],
+        ["Callee B", "0.5 s", "8.5 s", "19.3 s", "27.2 s", "27.5 s",
          "\"Search Google for Asian pairs prices.\" (pears: homophone)"],
     ], widths=[1.7, 1.5, 1.7, 1.9, 1.9, 2.1, 6.2])
     bullets(doc, [
@@ -257,7 +257,7 @@ def build() -> Path:
         "Machine time is small: Piper synthesizes a sentence in about 0.15 s; Whisper small transcribes "
         "an 8-second answer in about 0.3 s on the RTX 3090.",
         "Automated suite: 46 tests pass in about 40 s (unit, end to end, spec conformance, the join page in "
-        "headless Chrome); four more run the real models on .212 and pass.",
+        "headless Chrome); four more run the real models on the POC host and pass.",
     ])
 
     # ---- 3 usual approach
@@ -285,7 +285,7 @@ def build() -> Path:
     figure(doc, "architecture")
 
     doc.add_heading("4.1 Config and secrets", 2)
-    status_line(doc, "live", "gateway.yaml, ask.yaml and .env run the POC on .212.")
+    status_line(doc, "live", "gateway.yaml, ask.yaml and .env run the POC on the POC host.")
     bullets(doc, [
         ("gateway.yaml: ", "which adapters run, the account each uses, routes (where a call's audio goes), "
          "policy, and the consumers with their scopes."),
@@ -309,8 +309,8 @@ consumers:
   ask-service: {token_secret: TOKEN_ASK, scopes: [events:read, calls:control],
                 events: ["call.*"]}
 persons:
-  p_roman: {signal: ["+15551112222"]}
-policy: {inbound_allowlist: [p_roman], block_emergency_numbers: true}
+  p_owner: {signal: ["+15551112222"]}
+policy: {inbound_allowlist: [p_owner], block_emergency_numbers: true}
 """)
 
     doc.add_heading("4.2 Messaging layer", 2)
@@ -441,7 +441,7 @@ g->a {"event":"stop","reason":"ask_done"}
 
     # ---- 6 voitta-ask
     doc.add_heading("6. First agent: voitta-ask", 1)
-    status_line(doc, "live", "two answered calls on .212 with real models.")
+    status_line(doc, "live", "two answered calls on the POC host with real models.")
     para(doc, "A client sends a text and a recipient; voitta-ask calls them, reads the text, records the "
               "spoken answer, transcribes it and returns the text. It is a separate service that uses the "
               "gateway only through its public API and media protocol; the gateway did not change to support it "
@@ -488,7 +488,7 @@ g->a {"event":"stop","reason":"ask_done"}
         "(the speech API now mounted in voitta-ask, same models) and records transcript_source. The gateway runs "
         "no models itself, and the same path transcribes Signal voice notes.",
         "Only senders that pass policy are transcribed: a stranger's clip is held untouched.",
-        "Verified on .212 with the real models: AAC in m4a and Opus in webm both transcribed word for word, in "
+        "Verified on the POC host with the real models: AAC in m4a and Opus in webm both transcribed word for word, in "
         "about 0.1 to 0.3 s per clip.",
     ])
     doc.add_heading("7.3 Calls through a browser join page", 2)
@@ -537,12 +537,12 @@ g->a {"event":"stop","reason":"ask_done"}
         ["Chrome's sandboxed audio service cannot read a fake-microphone file; the page then records silence.",
          "The browser test disables that sandbox feature; the page itself is unaffected."],
         ["Shared host: ports 8765 and 8790 were already taken.",
-         "All ports are configurable; .212 uses 8700 (gateway), 7583 (signal-cli) and 8791 (voitta-ask)."],
+         "All ports are configurable; the POC host uses 8700 (gateway), 7583 (signal-cli) and 8791 (voitta-ask)."],
     ], widths=[8.0, 9.0])
 
     # ---- 8 deployment
     doc.add_heading("9. Deployment", 1)
-    doc.add_heading("9.1 The POC on .212", 2)
+    doc.add_heading("9.1 The POC host", 2)
     status_line(doc, "live", "as run for the calls in section 2.2.")
     figure(doc, "deployment-poc")
     bullets(doc, [
@@ -641,11 +641,11 @@ g->a {"event":"stop","reason":"ask_done"}
         ("Upgrade signal-cli to 0.14.10 everywhere at once ", "(database migration is one way); then the "
          "native build can place calls too."),
         ("Slack, to go live: ", "create the Voitta app from deploy/slack-app-manifest.yaml, put its two tokens "
-         "in .env, and give the ingress a public HTTPS name (a reverse proxy or tunnel to .212) for the join page."),
+         "in .env, and give the ingress a public HTTPS name (a reverse proxy or tunnel to the POC host) for the join page."),
         ("Telnyx: ", "open an account and buy a number to run phase 1."),
         ("Transcription quality: ", "try Whisper medium or large-v3 on the RTX 3090, and a vocabulary prompt."),
         ("Make the disclosure and recording notice a fixed part of every outbound call.", ""),
-        ("Production host and packaging: ", "build the Docker image, or run as systemd units on .212."),
+        ("Production host and packaging: ", "build the Docker image, or run as systemd units on the POC host."),
     ])
 
     # ---- sources
