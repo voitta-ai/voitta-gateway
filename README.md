@@ -19,6 +19,41 @@ Phone   ─┘   (one process)    └─ media WebSocket    (per call; the gatew
 | Slack | Socket Mode (watchdog, blocks, buttons, history) | voice clips -> transcripts; outbound calls via a browser join page |
 | Phone | — | Telnyx Call Control + media streaming, L16 16 kHz |
 
+## If you arrived here cold
+
+A program that should be reachable on Signal, on Slack and by telephone
+otherwise has to learn three transports: a signal-cli daemon it must own
+exclusively, a Socket Mode websocket, and a telephony provider's call-control
+and media protocol. Each has its own identity model, its own idea of a
+conversation, and its own failure modes. Nothing about any of that is specific
+to the program.
+
+So this is one process that owns the three, and one HTTP API in front of them.
+A program sends by posting a message and receives by reading an event stream;
+a voice call arrives as a media websocket carrying audio frames. The envelope
+is the same whichever channel it came from, which is what lets the same program
+answer a Signal group, a Slack thread and a phone call without a branch per
+channel.
+
+**Who it is for.** Anyone with a long-running program -- an assistant, a bot, a
+monitor, an on-call responder -- that people should be able to reach the way
+they already talk to each other, rather than through a web app you would also
+have to build. The program can be a service, or it can be a short-lived process
+that wakes up, polls for what happened and exits; both are first-class, and
+[Consumer contract](#consumer-contract) says what each owes the gateway.
+
+**What it is not.** Not a bot framework and not an agent: it holds no
+conversation state beyond routing and the event log, and it decides nothing
+about what to say. It renders no Markdown and splits no messages -- text is
+final when it reaches the gateway. And it is not multi-tenant hosting: one
+deployment owns its accounts, because a Signal account admits exactly one
+process at a time.
+
+**Several programs can share one account.** That is the part most people
+arrive needing: [Several agents on one account](#several-agents-on-one-account)
+covers how a group message, a DM or a reply is routed to one of them rather
+than broadcast to all.
+
 ## Run it
 
 ```bash
