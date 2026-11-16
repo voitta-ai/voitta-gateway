@@ -6,7 +6,19 @@
 # are generic, only the wordlist path and the default scan targets differ.
 #
 # Greps the given files/dirs for content that must never be published: key and
-# token shapes, cloud account ids, private IPs, internal-domain hostnames.
+# token shapes, cloud account ids, private IPs, internal-domain hostnames, and
+# a host named by its last octet alone ("live on <dot>NNN", "ssh <dot>NNN").
+#
+# That last one is here because the IP patterns below all require a full dotted
+# quad, so a repo that refers to its host as ".212" passes every one of them.
+# Measured 2026-11-15 in this repo: 28 such references, in the README's
+# first paragraph and in five rendered diagrams, through a gate that scanned
+# those exact files and printed clean. The pattern needs a preposition before
+# the octet and two or three digits in it, which is what keeps CSS lengths,
+# format specifiers and version fragments out. Note the examples above are
+# written with <dot> on purpose: this script is itself inside the paths CI
+# scans, so a comment holding a literal example makes the gate fail on its
+# own documentation.
 # voitta-gateway ships example configs, deploy files and pasted terminal
 # output, which is exactly the material a real value hides in. Exits non-zero
 # on a match, so it can gate CI or a pre-push hook.
@@ -65,6 +77,7 @@ private-ip-10|(^|[^0-9])10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}
 private-ip-192|(^|[^0-9])192\.168\.[0-9]{1,3}\.[0-9]{1,3}
 private-ip-172|(^|[^0-9])172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}
 internal-domain|[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.(internal|corp|intranet)\b
+bare-octet-host|(^|[^A-Za-z0-9_.])(on|to|at|from|host|ssh|scp|via) \.[0-9]{2,3}([^0-9]|$)
 "
 
 status=0
