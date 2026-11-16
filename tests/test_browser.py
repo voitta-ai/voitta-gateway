@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from .fakes import Agent
-from .test_slack import ROMAN, config, started, web  # noqa: F401  (web is a fixture)
+from .test_slack import PERSON, config, started, web  # noqa: F401  (web is a fixture)
 from .test_signal import wait_for
 
 CHROME = next((p for p in ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -55,7 +55,7 @@ async def test_join_page_in_headless_chrome(gateway, web, tmp_path):  # noqa: F8
     agent = Agent()
     await agent.start()
     gw, sl = await started(gateway, web, config(agent.url, ring_timeout_s=30))
-    r = await gw.client.post("/v1/calls", json={"to": ROMAN, "via": "slack"})
+    r = await gw.client.post("/v1/calls", json={"to": PERSON, "via": "slack"})
     call_id = r.json()["call_id"]
     await gw.wait_event("call.ringing")
     mic = tmp_path / "mic.wav"

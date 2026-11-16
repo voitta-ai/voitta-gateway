@@ -9,7 +9,7 @@ from voitta_gateway.audio import tone
 
 from .fakes import Agent, FakePort, FakeSignalCli
 
-ROMAN = "bbbbbbbb-0000-0000-0000-000000000002"
+PERSON = "bbbbbbbb-0000-0000-0000-000000000002"
 STRANGER = "cccccccc-0000-0000-0000-000000000003"
 ACCOUNT = "+15550001111"
 
@@ -23,8 +23,8 @@ def config(fake, agent=None, **over):
     cfg = {
         "adapters": {"signal": {"account": ACCOUNT, "spawn": False, "tcp": f"127.0.0.1:{fake.port}",
                                 "calls": agent is not None, "route": "main" if agent else None}},
-        "persons": {"p_roman": {"signal": [ROMAN]}},
-        "policy": {"inbound_allowlist": ["p_roman"]},
+        "persons": {"p_person": {"signal": [PERSON]}},
+        "policy": {"inbound_allowlist": ["p_person"]},
         "conversations": {"group1": {"channel": "signal", "key": "GROUP1"}},
     }
     if agent:
@@ -58,14 +58,14 @@ async def test_messages_receipts_policy(gateway, fake):
     assert ("subscribeReceive", {}) in fake.calls
 
     # inbound -> message.received, with person resolved
-    await fake.receive(envelope(ROMAN, 1000, dataMessage={"timestamp": 1000, "message": "hello"}))
+    await fake.receive(envelope(PERSON, 1000, dataMessage={"timestamp": 1000, "message": "hello"}))
     ev = await gw.wait_event("message.received")
     d = ev["data"]
-    assert d["person_id"] == "p_roman" and d["parts"] == [{"type": "text", "text": "hello"}]
+    assert d["person_id"] == "p_person" and d["parts"] == [{"type": "text", "text": "hello"}]
     assert ev["time"].startswith("1970-01-01T00:00:01") and ev["seq"] == 1 and ev["subject"] == d["conversation_id"]
 
     # redelivery of the same message is ignored
-    await fake.receive(envelope(ROMAN, 1000, dataMessage={"timestamp": 1000, "message": "hello"}))
+    await fake.receive(envelope(PERSON, 1000, dataMessage={"timestamp": 1000, "message": "hello"}))
 
     # reply: idempotency key derived from the event
     body = {"to": {"conversation_id": d["conversation_id"]}, "reply_to": d["message_id"],
@@ -78,19 +78,19 @@ async def test_messages_receipts_policy(gateway, fake):
     assert sent["data"]["message_id"] == mid
     sends = fake.methods("send")
     assert len(sends) == 1
-    assert sends[0]["recipient"] == [ROMAN] and sends[0]["quoteTimestamp"] == 1000
+    assert sends[0]["recipient"] == [PERSON] and sends[0]["quoteTimestamp"] == 1000
     ts = fake.ts
 
     # receipts move the status forward, never back
-    await fake.receive(envelope(ROMAN, 2000, receiptMessage={"when": 2000, "isRead": True, "timestamps": [ts]}))
+    await fake.receive(envelope(PERSON, 2000, receiptMessage={"when": 2000, "isRead": True, "timestamps": [ts]}))
     await gw.wait_event("message.status", pred=lambda e: e["data"]["status"] == "read")
-    await fake.receive(envelope(ROMAN, 2100, receiptMessage={"when": 2100, "isDelivery": True, "timestamps": [ts]}))
+    await fake.receive(envelope(PERSON, 2100, receiptMessage={"when": 2100, "isDelivery": True, "timestamps": [ts]}))
     await asyncio.sleep(0.2)
     statuses = [e["data"]["status"] for e in await gw.events("message.status") if e["data"]["message_id"] == mid]
     assert statuses == ["queued", "sent", "read"]
 
     # reaction to our message
-    await fake.receive(envelope(ROMAN, 3000, dataMessage={"timestamp": 3000, "reaction": {
+    await fake.receive(envelope(PERSON, 3000, dataMessage={"timestamp": 3000, "reaction": {
         "emoji": "👍", "targetAuthorUuid": fake.aci, "targetSentTimestamp": ts, "isRemove": False}}))
     re = await gw.wait_event("reaction.added")
     assert re["data"]["message_id"] == mid and re["data"]["emoji"] == "👍"
@@ -99,7 +99,7 @@ async def test_messages_receipts_policy(gateway, fake):
     r = await gw.client.post(f"/v1/messages/{d['message_id']}/reactions", json={"emoji": "❤️"})
     assert r.status_code == 202
     await gw.wait_event("operation.done")
-    assert fake.methods("sendReaction")[0]["targetAuthor"] == ROMAN
+    assert fake.methods("sendReaction")[0]["targetAuthor"] == PERSON
 
     # unknown sender is held without content, released on approval
     await fake.receive(envelope(STRANGER, 4000, dataMessage={"timestamp": 4000, "message": "secret"}))
@@ -113,8 +113,8 @@ async def test_messages_receipts_policy(gateway, fake):
 
     # group without a mention is dropped; with a mention of our ACI it is delivered
     g = {"groupId": "GROUP1", "type": "DELIVER"}
-    await fake.receive(envelope(ROMAN, 5000, dataMessage={"timestamp": 5000, "message": "chatter", "groupInfo": g}))
-    await fake.receive(envelope(ROMAN, 5001, dataMessage={"timestamp": 5001, "message": "@bot hi", "groupInfo": g,
+    await fake.receive(envelope(PERSON, 5000, dataMessage={"timestamp": 5000, "message": "chatter", "groupInfo": g}))
+    await fake.receive(envelope(PERSON, 5001, dataMessage={"timestamp": 5001, "message": "@bot hi", "groupInfo": g,
                                                          "mentions": [{"uuid": fake.aci, "start": 0, "length": 1}]}))
     ge = await gw.wait_event("message.received", pred=lambda e: e["data"]["conversation_kind"] == "group")
     assert ge["data"]["parts"][0]["text"] == "@bot hi"
@@ -122,7 +122,7 @@ async def test_messages_receipts_policy(gateway, fake):
     assert "chatter" not in texts
 
     # STOP opts out; further sends to that conversation are refused
-    await fake.receive(envelope(ROMAN, 6000, dataMessage={"timestamp": 6000, "message": "stop"}))
+    await fake.receive(envelope(PERSON, 6000, dataMessage={"timestamp": 6000, "message": "stop"}))
     await gw.wait_event("contact.opted_out")
     r = await gw.client.post("/v1/messages", json={"to": {"conversation_id": d["conversation_id"]},
                                                    "parts": [{"type": "text", "text": "x"}]})
@@ -138,12 +138,12 @@ async def test_messages_receipts_policy(gateway, fake):
 async def test_sse_stream_resumes(gateway, fake):
     gw = await gateway(config(fake))
     await up(gw, fake)
-    await fake.receive(envelope(ROMAN, 1000, dataMessage={"timestamp": 1000, "message": "one"}))
+    await fake.receive(envelope(PERSON, 1000, dataMessage={"timestamp": 1000, "message": "one"}))
     first = await gw.wait_event("message.received")
     got = []
     async with gw.client.stream("GET", "/v1/events", params={"types": "message.received"},
                                 headers={"Last-Event-ID": first["id"]}) as r:
-        await fake.receive(envelope(ROMAN, 2000, dataMessage={"timestamp": 2000, "message": "two"}))
+        await fake.receive(envelope(PERSON, 2000, dataMessage={"timestamp": 2000, "message": "two"}))
         async for line in r.aiter_lines():
             if line.startswith("data: "):
                 import json
@@ -175,16 +175,16 @@ async def test_incoming_call_audio_both_ways(gateway, fake):
     assert ("subscribeCallEvents", {}) in fake.calls
     call_id = -4611686018427387904                             # Java long, negative: must round-trip
     fake.next_call_devices = ("signal_input_9", "signal_output_9")   # acceptCall echoes the call's devices
-    await fake.call_event(callId=call_id, state="RINGING_INCOMING", uuid=ROMAN, isOutgoing=False,
+    await fake.call_event(callId=call_id, state="RINGING_INCOMING", uuid=PERSON, isOutgoing=False,
                           inputDeviceName="signal_input_9", outputDeviceName="signal_output_9")
     ring = await gw.wait_event("call.ringing")
-    assert ring["data"]["person_id"] == "p_roman"
+    assert ring["data"]["person_id"] == "p_person"
     await wait_for(lambda: fake.methods("acceptCall"))
     assert fake.methods("acceptCall")[0]["callId"] == call_id
     assert agent.of("connected") and not agent.of("start")    # agent connected, silent until answered
     assert agent.query["call_id"] == ring["data"]["call_id"]
 
-    await fake.call_event(callId=call_id, state="CONNECTED", uuid=ROMAN, isOutgoing=False)
+    await fake.call_event(callId=call_id, state="CONNECTED", uuid=PERSON, isOutgoing=False)
     await gw.wait_event("call.answered")
     await asyncio.wait_for(agent.started.wait(), 3)
     start = agent.of("start")[0]
@@ -210,7 +210,7 @@ async def test_incoming_call_audio_both_ways(gateway, fake):
     await wait_for(lambda: any(m.get("name") == "long" for m in agent.of("mark")))
     assert [m for m in agent.of("mark") if m["name"] == "long"][0]["cleared"] is True
 
-    await fake.call_event(callId=call_id, state="ENDED", uuid=ROMAN, isOutgoing=False, reason="REMOTE_HANGUP")
+    await fake.call_event(callId=call_id, state="ENDED", uuid=PERSON, isOutgoing=False, reason="REMOTE_HANGUP")
     end = await gw.wait_event("call.ended")
     assert end["data"]["reason"] == "remote_hangup" and end["data"]["answered"]
     await asyncio.wait_for(agent.stopped.wait(), 3)
@@ -222,7 +222,7 @@ async def test_call_rejected_when_agent_unreachable(gateway, fake):
     agent = Agent()                                           # never started: nothing listens
     gw = await gateway(config(fake, agent), signal_port_factory=FakePort)
     await up(gw, fake)
-    await fake.call_event(callId=55, state="RINGING_INCOMING", uuid=ROMAN, isOutgoing=False,
+    await fake.call_event(callId=55, state="RINGING_INCOMING", uuid=PERSON, isOutgoing=False,
                           inputDeviceName="i", outputDeviceName="o")
     end = await gw.wait_event("call.ended")
     assert end["data"]["reason"] == "agent_unreachable"
@@ -246,10 +246,10 @@ async def test_agent_reconnects_within_grace(gateway, fake):
     await agent.start()
     gw = await gateway(config(fake, agent), signal_port_factory=FakePort)
     await up(gw, fake)
-    await fake.call_event(callId=77, state="RINGING_INCOMING", uuid=ROMAN, isOutgoing=False,
+    await fake.call_event(callId=77, state="RINGING_INCOMING", uuid=PERSON, isOutgoing=False,
                           inputDeviceName="i", outputDeviceName="o")
     await wait_for(lambda: fake.methods("acceptCall"))
-    await fake.call_event(callId=77, state="CONNECTED", uuid=ROMAN, isOutgoing=False)
+    await fake.call_event(callId=77, state="CONNECTED", uuid=PERSON, isOutgoing=False)
     await wait_for(lambda: agent.connections == 2 and len(agent.of("start")) == 2)
     assert any(m.get("resumed") for m in agent.of("connected"))
     # agent hangs up from the media socket
@@ -264,11 +264,11 @@ async def test_agent_lost_hangs_up_after_grace(gateway, fake):
     await agent.start()
     gw = await gateway(config(fake, agent), signal_port_factory=FakePort)
     await up(gw, fake)
-    await fake.call_event(callId=78, state="RINGING_INCOMING", uuid=ROMAN, isOutgoing=False,
+    await fake.call_event(callId=78, state="RINGING_INCOMING", uuid=PERSON, isOutgoing=False,
                           inputDeviceName="i", outputDeviceName="o")
     await wait_for(lambda: fake.methods("acceptCall"))
     await agent.stop()                                       # agent goes away for good
-    await fake.call_event(callId=78, state="CONNECTED", uuid=ROMAN, isOutgoing=False)
+    await fake.call_event(callId=78, state="CONNECTED", uuid=PERSON, isOutgoing=False)
     end = await gw.wait_event("call.ended", timeout=8)
     assert end["data"]["reason"] == "agent_lost" and fake.methods("hangupCall") == [{"callId": 78}]
 
@@ -278,15 +278,15 @@ async def test_outbound_signal_call(gateway, fake):
     await agent.start()
     gw = await gateway(config(fake, agent), signal_port_factory=FakePort)
     await up(gw, fake)
-    r = await gw.client.post("/v1/calls", json={"to": {"person_id": "p_roman"}, "via": "signal",
+    r = await gw.client.post("/v1/calls", json={"to": {"person_id": "p_person"}, "via": "signal",
                                                 "idempotency_key": "k1"})
     assert r.status_code == 202, r.text
     call_id = r.json()["call_id"]
     await wait_for(lambda: fake.methods("startCall"))
-    assert fake.methods("startCall")[0]["recipient"] == ROMAN
-    await fake.call_event(callId=987654321, state="RINGING_OUTGOING", uuid=ROMAN, isOutgoing=True)
+    assert fake.methods("startCall")[0]["recipient"] == PERSON
+    await fake.call_event(callId=987654321, state="RINGING_OUTGOING", uuid=PERSON, isOutgoing=True)
     await gw.wait_event("call.ringing", pred=lambda e: e["data"]["call_id"] == call_id)
-    await fake.call_event(callId=987654321, state="CONNECTED", uuid=ROMAN, isOutgoing=True)
+    await fake.call_event(callId=987654321, state="CONNECTED", uuid=PERSON, isOutgoing=True)
     await asyncio.wait_for(agent.started.wait(), 3)
     assert agent.of("start")[0]["direction"] == "outbound"
     r = await gw.client.post(f"/v1/calls/{call_id}/hangup")

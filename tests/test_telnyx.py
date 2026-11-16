@@ -17,7 +17,7 @@ from .fakes import Agent, FakeTelnyxApi
 from .test_signal import wait_for
 
 OUR = "+15550002222"
-ROMAN = "+15551112222"
+PERSON = "+15551112222"
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ async def start(gateway, agent, api: FakeTelnyxApi):
                                "public_base_url": "http://placeholder"}},
         "routes": {"main": {"media_url": agent.url, "media_secret_secret": "TEST_MEDIA_SECRET",
                             "connect_timeout_s": 1.0}},
-        "persons": {"p_roman": {"phone": [ROMAN]}},
+        "persons": {"p_person": {"phone": [PERSON]}},
     }, telnyx_http=api.client())
 
 
@@ -74,10 +74,10 @@ async def test_inbound_phone_call(gateway, key):
 
     pid = "v3:inbound-1"
     r = await post_hook(gw, key, hook("call.initiated", "e1", call_control_id=pid, direction="incoming",
-                                      **{"from": ROMAN, "to": OUR}, state="parked"))
+                                      **{"from": PERSON, "to": OUR}, state="parked"))
     assert r.status_code == 200
     ring = await gw.wait_event("call.ringing")
-    assert ring["data"]["person_id"] == "p_roman" and ring["data"]["from"] == ROMAN
+    assert ring["data"]["person_id"] == "p_person" and ring["data"]["from"] == PERSON
     await wait_for(lambda: api.actions("answer"))
     path, body = api.actions("answer")[0]
     assert path == f"/v2/calls/{pid}/actions/answer"
@@ -148,7 +148,7 @@ async def test_byte_order_autodetect(gateway, key):
     tel.cfg.public_base_url = gw.ingress_url
     pid = "v3:inbound-2"
     await post_hook(gw, key, hook("call.initiated", "f1", call_control_id=pid, direction="incoming",
-                                  **{"from": ROMAN, "to": OUR}))
+                                  **{"from": PERSON, "to": OUR}))
     await wait_for(lambda: api.actions("answer"))
     url = api.actions("answer")[0][1]["stream_url"]
     async with websockets.connect(url) as tws:
@@ -176,12 +176,12 @@ async def test_outbound_phone_call_and_emergency_block(gateway, key):
     r = await gw.client.post("/v1/calls", json={"to": "911", "via": "phone"})
     assert r.status_code == 403 and r.json()["error"]["code"] == "emergency_number_blocked"
 
-    r = await gw.client.post("/v1/calls", json={"to": {"person_id": "p_roman"}})
+    r = await gw.client.post("/v1/calls", json={"to": {"person_id": "p_person"}})
     assert r.status_code == 202, r.text
     call_id = r.json()["call_id"]
     await wait_for(lambda: any(p == "/v2/calls" for _, p, _ in api.requests))
     body = [b for m, p, b in api.requests if p == "/v2/calls"][0]
-    assert body["to"] == ROMAN and body["from"] == OUR and body["connection_id"] == "conn-1"
+    assert body["to"] == PERSON and body["from"] == OUR and body["connection_id"] == "conn-1"
     assert base64.b64decode(body["client_state"]).decode() == call_id
 
     await post_hook(gw, key, hook("call.initiated", "o1", call_control_id="v3:outbound-1", direction="outgoing",

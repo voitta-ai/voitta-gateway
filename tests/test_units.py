@@ -77,11 +77,11 @@ def test_event_type_matching():
 
 def test_identity_and_emergency(tmp_path):
     cfg = Config.model_validate({"data_dir": str(tmp_path), "persons": {
-        "p_roman": {"signal": ["AAAA-uuid"], "slack": ["T1/U1"], "phone": ["+1 (555) 111-2222"]}}})
+        "p_person": {"signal": ["AAAA-uuid"], "slack": ["T1/U1"], "phone": ["+1 (555) 111-2222"]}}})
     ident = Identity(cfg)
-    assert ident.lookup("phone", "+15551112222") == "p_roman"
-    assert ident.lookup("signal", "aaaa-uuid") == "p_roman"
-    assert ident.lookup("slack", "T1/U1") == "p_roman"
+    assert ident.lookup("phone", "+15551112222") == "p_person"
+    assert ident.lookup("signal", "aaaa-uuid") == "p_person"
+    assert ident.lookup("slack", "T1/U1") == "p_person"
     gw = Gateway(cfg)
     assert gw.emergency("911") and gw.emergency("+112") and not gw.emergency("+15551112222")
 

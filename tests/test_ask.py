@@ -13,7 +13,7 @@ from voitta_gateway.audio import silence, tone
 from .conftest import MEDIA_SECRET, TOKEN, serve
 from .fakes import FakePort, FakeSignalCli, free_port
 from .spec_check import ask_api, response_hook
-from .test_signal import ROMAN, up, wait_for
+from .test_signal import PERSON, up, wait_for
 
 CLIENT_TOKEN = "client-token"
 
@@ -58,7 +58,7 @@ async def setup(gateway, engines):
                                 "calls": True}},
         "routes": {"ask": {"media_url": f"ws://127.0.0.1:{ask_port}/media",
                            "media_secret_secret": "TEST_MEDIA_SECRET", "fallback": "hangup"}},
-        "persons": {"p_roman": {"signal": [ROMAN]}},
+        "persons": {"p_person": {"signal": [PERSON]}},
     }, signal_port_factory=factory)
     await up(gw, fake)
 
@@ -101,14 +101,14 @@ async def speak(port: FakePort, speech_s: float, quiet_s: float):
 
 async def test_ask_answered(setup):
     fake, ports, client, stt, gw, svc = setup
-    r = await client.post("/v1/asks", json={"to": ROMAN, "via": "signal", "text": "Are you coming tomorrow?"})
+    r = await client.post("/v1/asks", json={"to": PERSON, "via": "signal", "text": "Are you coming tomorrow?"})
     assert r.status_code == 202, r.text
     ask = r.json()
     assert ask["state"] == "calling" and ask["call_id"].startswith("call_")
     await wait_for(lambda: fake.methods("startCall"))
-    await fake.call_event(callId=987654321, state="RINGING_OUTGOING", uuid=ROMAN, isOutgoing=True)
+    await fake.call_event(callId=987654321, state="RINGING_OUTGOING", uuid=PERSON, isOutgoing=True)
     await state_is(client, ask["ask_id"], "ringing")
-    await fake.call_event(callId=987654321, state="CONNECTED", uuid=ROMAN, isOutgoing=True)
+    await fake.call_event(callId=987654321, state="CONNECTED", uuid=PERSON, isOutgoing=True)
     await state_is(client, ask["ask_id"], "speaking")
     await state_is(client, ask["ask_id"], "listening")
 
@@ -129,23 +129,23 @@ async def test_ask_answered(setup):
 
 async def test_ask_no_answer(setup):
     fake, ports, client, stt, gw, svc = setup
-    ask = (await client.post("/v1/asks", json={"to": ROMAN, "text": "Hello?"})).json()
+    ask = (await client.post("/v1/asks", json={"to": PERSON, "text": "Hello?"})).json()
     await wait_for(lambda: fake.methods("startCall"))
-    await fake.call_event(callId=987654321, state="RINGING_OUTGOING", uuid=ROMAN, isOutgoing=True)
-    await fake.call_event(callId=987654321, state="ENDED", uuid=ROMAN, isOutgoing=True, reason="TIMEOUT")
+    await fake.call_event(callId=987654321, state="RINGING_OUTGOING", uuid=PERSON, isOutgoing=True)
+    await fake.call_event(callId=987654321, state="ENDED", uuid=PERSON, isOutgoing=True, reason="TIMEOUT")
     r = (await client.get(f"/v1/asks/{ask['ask_id']}", params={"wait": 10})).json()
     assert r["state"] == "no_answer" and r["end_reason"] == "timeout" and r["transcript"] is None
 
 
 async def test_ask_hangup_while_answering(setup):
     fake, ports, client, stt, gw, svc = setup
-    ask = (await client.post("/v1/asks", json={"to": ROMAN, "text": "Quick question"})).json()
+    ask = (await client.post("/v1/asks", json={"to": PERSON, "text": "Quick question"})).json()
     await wait_for(lambda: fake.methods("startCall"))
-    await fake.call_event(callId=987654321, state="CONNECTED", uuid=ROMAN, isOutgoing=True)
+    await fake.call_event(callId=987654321, state="CONNECTED", uuid=PERSON, isOutgoing=True)
     await state_is(client, ask["ask_id"], "listening")
     await speak(ports[0], 0.8, 0.0)
     await asyncio.sleep(0.3)
-    await fake.call_event(callId=987654321, state="ENDED", uuid=ROMAN, isOutgoing=True, reason="REMOTE_HANGUP")
+    await fake.call_event(callId=987654321, state="ENDED", uuid=PERSON, isOutgoing=True, reason="REMOTE_HANGUP")
     r = (await client.get(f"/v1/asks/{ask['ask_id']}", params={"wait": 10})).json()
     assert r["state"] == "done" and r["end_reason"] == "hung_up" and r["transcript"] == "yes I will be there"
 
@@ -154,9 +154,9 @@ async def test_ask_refusals(setup):
     fake, ports, client, stt, gw, svc = setup
     r = await client.post("/v1/asks", json={"to": "+15551234567", "via": "phone", "text": "hi"})
     assert r.status_code == 422 and r.json()["error"]["code"] == "unknown_channel"
-    r = await client.post("/v1/asks", json={"to": ROMAN, "text": ""})
+    r = await client.post("/v1/asks", json={"to": PERSON, "text": ""})
     assert r.status_code == 422
-    r = await client.post("/v1/asks", json={"to": ROMAN, "text": "x"}, headers={"Authorization": "Bearer nope"})
+    r = await client.post("/v1/asks", json={"to": PERSON, "text": "x"}, headers={"Authorization": "Bearer nope"})
     assert r.status_code == 401
     r = await client.get("/v1/asks/ask_nope")
     assert r.status_code == 404
@@ -169,11 +169,11 @@ def follower(svc) -> asyncio.Task:
 async def test_missed_end_event_caught_by_watchdog(setup):
     """The unanswered-call bug: the call ends unanswered but the ask service never sees call.ended."""
     fake, ports, client, stt, gw, svc = setup
-    ask = (await client.post("/v1/asks", json={"to": ROMAN, "text": "Hello?"})).json()
+    ask = (await client.post("/v1/asks", json={"to": PERSON, "text": "Hello?"})).json()
     await wait_for(lambda: fake.methods("startCall"))
     follower(svc).cancel()                                     # events stop reaching the ask service
-    await fake.call_event(callId=987654321, state="RINGING_OUTGOING", uuid=ROMAN, isOutgoing=True)
-    await fake.call_event(callId=987654321, state="ENDED", uuid=ROMAN, isOutgoing=True, reason="TIMEOUT")
+    await fake.call_event(callId=987654321, state="RINGING_OUTGOING", uuid=PERSON, isOutgoing=True)
+    await fake.call_event(callId=987654321, state="ENDED", uuid=PERSON, isOutgoing=True, reason="TIMEOUT")
     r = (await client.get(f"/v1/asks/{ask['ask_id']}", params={"wait": 3})).json()
     assert r["state"] == "no_answer" and r["end_reason"] == "timeout", r
 
@@ -181,7 +181,7 @@ async def test_missed_end_event_caught_by_watchdog(setup):
 async def test_ring_timeout(setup):
     """Nothing at all comes back from the platform: give up after ring_timeout_s and hang up."""
     fake, ports, client, stt, gw, svc = setup
-    ask = (await client.post("/v1/asks", json={"to": ROMAN, "text": "Hello?"})).json()
+    ask = (await client.post("/v1/asks", json={"to": PERSON, "text": "Hello?"})).json()
     r = (await client.get(f"/v1/asks/{ask['ask_id']}", params={"wait": 8})).json()
     assert r["state"] == "no_answer" and r["end_reason"] == "ring_timeout", r
     assert fake.methods("hangupCall") == [{"callId": 987654321}]

@@ -14,7 +14,7 @@ from voitta_ask.service import load
 from voitta_gateway.audio import Resampler, silence
 
 from .test_ask import setup, state_is  # noqa: F401  (setup uses our engines)
-from .test_signal import ROMAN, wait_for
+from .test_signal import PERSON, wait_for
 
 CFG = os.environ.get("VOITTA_ASK_REAL")
 pytestmark = pytest.mark.skipif(not CFG, reason="set VOITTA_ASK_REAL=path/to/ask.yaml")
@@ -30,9 +30,9 @@ def engines():
 async def test_real_models_round_trip(setup, engines):
     fake, ports, client, stt, gw, svc = setup
     tts = PiperTTS(load(CFG).tts.model)                          # the caller's voice
-    ask = (await client.post("/v1/asks", json={"to": ROMAN, "text": "Will you join the review at ten tomorrow?"})).json()
+    ask = (await client.post("/v1/asks", json={"to": PERSON, "text": "Will you join the review at ten tomorrow?"})).json()
     await wait_for(lambda: fake.methods("startCall"))
-    await fake.call_event(callId=987654321, state="CONNECTED", uuid=ROMAN, isOutgoing=True)
+    await fake.call_event(callId=987654321, state="CONNECTED", uuid=PERSON, isOutgoing=True)
     await state_is(client, ask["ask_id"], "listening", timeout=20)
 
     answer16 = tts.synthesize("Yes, I will be there at ten. Please send me the agenda.")

@@ -15,7 +15,7 @@ from voitta_gateway.audio import tone
 
 from .conftest import serve
 from .fakes import FakePort, FakeSignalCli
-from .test_signal import ROMAN, config as signal_config, up, wait_for
+from .test_signal import PERSON, config as signal_config, up, wait_for
 
 
 class FakeWeb:
@@ -73,8 +73,8 @@ async def test_slack_messages(gateway, fake_slack):
     web = fake_slack
     gw = await gateway({"adapters": {"slack": {"bot_token_secret": "SLACK_BOT", "app_token_secret": "SLACK_APP",
                                                "min_interval_s": 0.3}},
-                        "persons": {"p_roman": {"slack": ["T1/U1"]}},
-                        "policy": {"inbound_allowlist": ["p_roman"]},
+                        "persons": {"p_person": {"slack": ["T1/U1"]}},
+                        "policy": {"inbound_allowlist": ["p_person"]},
                         "conversations": {"c1": {"channel": "slack", "key": "C1"}}})
     await wait_for(lambda: gw.gw.channel_up.get("slack"))
     slack: SlackAdapter = gw.gw.messaging["slack"]
@@ -84,7 +84,7 @@ async def test_slack_messages(gateway, fake_slack):
                               "text": "hello", "ts": "1700000000.000100", "team": "T1"})
     ev = await gw.wait_event("message.received")
     d = ev["data"]
-    assert d["conversation_kind"] == "direct" and d["person_id"] == "p_roman"
+    assert d["conversation_kind"] == "direct" and d["person_id"] == "p_person"
 
     # channel chatter without a mention is dropped; a mention gets through
     await slack.handle_event({"type": "message", "channel": "C1", "channel_type": "channel", "user": "U1",
@@ -127,7 +127,7 @@ async def test_slack_messages(gateway, fake_slack):
     assert ed["data"]["message_id"] == d["message_id"]
 
     # agent-initiated DM to a person reuses the DM conversation (and its known channel)
-    r = await gw.client.post("/v1/messages", json={"to": {"person_id": "p_roman", "channel": "slack"},
+    r = await gw.client.post("/v1/messages", json={"to": {"person_id": "p_person", "channel": "slack"},
                                                    "parts": [{"type": "text", "text": "ping"}]})
     assert r.status_code == 202 and r.json()["conversation_id"] == d["conversation_id"]
     await wait_for(lambda: any(p["text"] == "ping" and p["channel"] == "D1" for p in web.of("chat_postMessage")))
@@ -135,7 +135,7 @@ async def test_slack_messages(gateway, fake_slack):
 
     # a person we never heard from on Slack: the DM channel is opened on demand
     gw.gw.identity.by_addr[("slack", "U2")] = "p_new"
-    gw.gw.identity.persons["p_new"] = type(gw.gw.identity.persons["p_roman"])(slack=["U2"])
+    gw.gw.identity.persons["p_new"] = type(gw.gw.identity.persons["p_person"])(slack=["U2"])
     r = await gw.client.post("/v1/messages", json={"to": {"person_id": "p_new"},
                                                    "parts": [{"type": "text", "text": "welcome"}]})
     assert r.status_code == 202
@@ -176,10 +176,10 @@ async def test_pipecat_bot_echoes_a_signal_call(gateway):
         url = bot_url
     gw = await gateway(signal_config(fake, A), signal_port_factory=factory)
     await up(gw, fake)
-    await fake.call_event(callId=5, state="RINGING_INCOMING", uuid=ROMAN, isOutgoing=False,
+    await fake.call_event(callId=5, state="RINGING_INCOMING", uuid=PERSON, isOutgoing=False,
                           inputDeviceName="i", outputDeviceName="o")
     await wait_for(lambda: fake.methods("acceptCall"))
-    await fake.call_event(callId=5, state="CONNECTED", uuid=ROMAN, isOutgoing=False)
+    await fake.call_event(callId=5, state="CONNECTED", uuid=PERSON, isOutgoing=False)
     await gw.wait_event("call.answered")
     await wait_for(lambda: ports)
     for _ in range(100):                                        # 2 s of tone from the caller
@@ -190,7 +190,7 @@ async def test_pipecat_bot_echoes_a_signal_call(gateway):
         return [w for w in ports[0].written if np.abs(np.frombuffer(w, "<i2")).max() > 2000]
     await wait_for(lambda: len(loud()) > 20, timeout=8)
 
-    await fake.call_event(callId=5, state="ENDED", uuid=ROMAN, isOutgoing=False, reason="REMOTE_HANGUP")
+    await fake.call_event(callId=5, state="ENDED", uuid=PERSON, isOutgoing=False, reason="REMOTE_HANGUP")
     await gw.wait_event("call.ended")
     server.should_exit = True
     await task

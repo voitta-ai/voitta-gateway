@@ -18,7 +18,7 @@ from .conftest import serve
 from .fakes import Agent, BrowserSim, FakeSlackWeb, free_port
 from .test_signal import wait_for
 
-ROMAN = "U1"
+PERSON = "U1"
 
 
 @pytest.fixture
@@ -40,8 +40,8 @@ def web(monkeypatch):
 def config(agent_url: str | None = None, speech_url: str | None = None, **calls) -> dict:
     cfg = {"adapters": {"slack": {"bot_token_secret": "SLACK_BOT", "app_token_secret": "SLACK_APP",
                                   "min_interval_s": 0}},
-           "persons": {"p_roman": {"slack": [f"T1/{ROMAN}"]}},
-           "policy": {"inbound_allowlist": ["p_roman"]},
+           "persons": {"p_person": {"slack": [f"T1/{PERSON}"]}},
+           "policy": {"inbound_allowlist": ["p_person"]},
            "conversations": {c.lower(): {"channel": "slack", "key": c} for c in ("C1", "C2", "C3", "C4")}}
     if agent_url:
         cfg["adapters"]["slack"]["calls"] = {"public_base_url": "http://placeholder", "route": "main", **calls}
@@ -61,7 +61,7 @@ async def started(gateway, web, cfg, **kw):
     return gw, sl
 
 
-def msg(channel, ts, text="", user=ROMAN, **kw):
+def msg(channel, ts, text="", user=PERSON, **kw):
     ev = {"type": "message", "channel": channel, "user": user, "text": text, "ts": ts, "team": "T1",
           "channel_type": "im" if channel.startswith("D") else "channel"}
     ev.update(kw)
@@ -200,14 +200,14 @@ async def test_interactions_blocks_and_history(gateway, web):
 
     # the click comes back as interaction.received, tied to our card; our own Join buttons are not events
     card_ts = gw.gw.store.message(card)["platform_id"]
-    await sl.handle_interaction({"type": "block_actions", "user": {"id": ROMAN}, "channel": {"id": "C1"},
+    await sl.handle_interaction({"type": "block_actions", "user": {"id": PERSON}, "channel": {"id": "C1"},
                                  "message": {"ts": card_ts}, "actions": [
                                      {"action_id": "approve", "block_id": "b1", "type": "button", "value": "v2",
                                       "action_ts": "1700000200.1"},
                                      {"action_id": "voitta_call_join", "type": "button"}]})
     it = await gw.wait_event("interaction.received")
     assert it["data"]["message_id"] == card and it["data"]["value"] == "v2"
-    assert it["data"]["person_id"] == "p_roman" and it["data"]["action_id"] == "approve"
+    assert it["data"]["person_id"] == "p_person" and it["data"]["action_id"] == "approve"
     assert len(await gw.events("interaction.received")) == 1
 
     # edit the card into a verdict
@@ -220,14 +220,14 @@ async def test_interactions_blocks_and_history(gateway, web):
 
     # thread history from the platform: who said what, with our ids where we know them
     web.replies["3.1"] = [
-        {"ts": "3.1", "user": ROMAN, "text": "<@UBOT> approve the deploy?", "thread_ts": "3.1"},
+        {"ts": "3.1", "user": PERSON, "text": "<@UBOT> approve the deploy?", "thread_ts": "3.1"},
         {"ts": "3.2", "user": "U7", "text": "+1 from me", "thread_ts": "3.1"},
         {"ts": card_ts, "user": "UBOT", "bot_id": "BBOT", "text": "Deploy v2?", "thread_ts": "3.1"}]
     r = await gw.client.get(f"/v1/conversations/{cid}/history", params={"thread": asked, "limit": 10})
     assert r.status_code == 200, r.text
     h = r.json()["messages"]
     assert [m["sender"]["kind"] for m in h] == ["human", "human", "self"]
-    assert h[0]["message_id"] == asked and h[0]["person_id"] == "p_roman"
+    assert h[0]["message_id"] == asked and h[0]["person_id"] == "p_person"
     assert h[1]["message_id"] is None and h[2]["message_id"] == card
 
 
@@ -239,12 +239,12 @@ async def test_slack_call_answered(gateway, web):
     ch = {c["channel"]: c for c in (await gw.client.get("/v1/channels")).json()["channels"]}
     assert ch["slack"]["calls"]["outbound"] is True and ch["slack"]["messaging"]["blocks"] is True
 
-    r = await gw.client.post("/v1/calls", json={"to": {"person_id": "p_roman"}, "via": "slack"})
+    r = await gw.client.post("/v1/calls", json={"to": {"person_id": "p_person"}, "via": "slack"})
     assert r.status_code == 202, r.text
     call_id = r.json()["call_id"]
     await gw.wait_event("call.ringing", pred=lambda e: e["data"]["call_id"] == call_id)
     card = web.of("chat_postMessage")[-1]
-    assert card["channel"] == f"D{ROMAN}" and "is calling you" in card["blocks"][0]["text"]["text"]
+    assert card["channel"] == f"D{PERSON}" and "is calling you" in card["blocks"][0]["text"]["text"]
     join = web.join_url()
 
     async with httpx.AsyncClient() as http:
@@ -292,7 +292,7 @@ async def test_slack_call_missed_and_page_hangup(gateway, web, monkeypatch):
     gw, sl = await started(gateway, web, config(agent.url, ring_timeout_s=0.5))
 
     # nobody joins: missed
-    r = await gw.client.post("/v1/calls", json={"to": ROMAN, "via": "slack"})
+    r = await gw.client.post("/v1/calls", json={"to": PERSON, "via": "slack"})
     missed_id = r.json()["call_id"]
     end = await gw.wait_event("call.ended", pred=lambda e: e["data"]["call_id"] == missed_id)
     assert end["data"]["reason"] == "timeout" and not end["data"]["answered"]
@@ -305,7 +305,7 @@ async def test_slack_call_missed_and_page_hangup(gateway, web, monkeypatch):
 
     # joined, page reloaded (socket dropped and back within the grace), then Hang up on the page
     sl.cfg.calls.ring_timeout_s = 30
-    r = await gw.client.post("/v1/calls", json={"to": ROMAN, "via": "slack"})
+    r = await gw.client.post("/v1/calls", json={"to": PERSON, "via": "slack"})
     call_id = r.json()["call_id"]
     await gw.wait_event("call.ringing", pred=lambda e: e["data"]["call_id"] == call_id)
     first = BrowserSim(web.join_url())
@@ -321,7 +321,7 @@ async def test_slack_call_missed_and_page_hangup(gateway, web, monkeypatch):
     assert end["data"]["reason"] == "remote_hangup" and end["data"]["answered"]
 
     # joined, then the tab is closed for good: ends after the grace
-    r = await gw.client.post("/v1/calls", json={"to": ROMAN, "via": "slack"})
+    r = await gw.client.post("/v1/calls", json={"to": PERSON, "via": "slack"})
     gone_id = r.json()["call_id"]
     await gw.wait_event("call.ringing", pred=lambda e: e["data"]["call_id"] == gone_id)
     third = BrowserSim(web.join_url())
@@ -338,7 +338,7 @@ async def test_slack_calls_api_card_and_fallback(gateway, web):
     await agent.start()
     gw, sl = await started(gateway, web, config(agent.url, card="calls_api"))
 
-    r = await gw.client.post("/v1/calls", json={"to": ROMAN, "via": "slack"})
+    r = await gw.client.post("/v1/calls", json={"to": PERSON, "via": "slack"})
     call_id = r.json()["call_id"]
     await gw.wait_event("call.ringing", pred=lambda e: e["data"]["call_id"] == call_id)
     add = web.of("calls_add")[-1]
@@ -348,14 +348,14 @@ async def test_slack_calls_api_card_and_fallback(gateway, web):
     await browser.connect()
     await gw.wait_event("call.answered")
     await wait_for(lambda: web.of("calls_participants_add"))
-    assert web.of("calls_participants_add")[-1]["users"] == [{"slack_id": ROMAN}]
+    assert web.of("calls_participants_add")[-1]["users"] == [{"slack_id": PERSON}]
     await gw.client.post(f"/v1/calls/{call_id}/hangup")
     await gw.wait_event("call.ended")
     await wait_for(lambda: web.of("calls_end"))
 
     # Slack refuses the native card in DMs: the call is ended there and the Join button is used instead
     web.fail["post_call_block"] = "not_allowed_token_type"
-    r = await gw.client.post("/v1/calls", json={"to": ROMAN, "via": "slack"})
+    r = await gw.client.post("/v1/calls", json={"to": PERSON, "via": "slack"})
     second = r.json()["call_id"]
     await gw.wait_event("call.ringing", pred=lambda e: e["data"]["call_id"] == second)
     assert len(web.of("calls_end")) == 2
@@ -377,7 +377,7 @@ async def test_voitta_ask_over_slack(gateway, web):
         "answer": {"end_silence_s": 1.0, "no_speech_s": 5.0, "max_answer_s": 15.0}})
     server, task, url = await serve(build_app(AskService(ask_cfg, tts=FakeTTS(), stt=FakeSTT("yes, at ten"))), ask_port)
     async with httpx.AsyncClient(base_url=url, headers={"Authorization": "Bearer client-token"}, timeout=30) as c:
-        ask = (await c.post("/v1/asks", json={"to": ROMAN, "via": "slack", "text": "Review at ten?"})).json()
+        ask = (await c.post("/v1/asks", json={"to": PERSON, "via": "slack", "text": "Review at ten?"})).json()
         assert ask["state"] == "calling", ask
         await wait_for(lambda: c and web.of("chat_postMessage"))
         browser = BrowserSim(web.join_url())
