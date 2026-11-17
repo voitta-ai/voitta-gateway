@@ -822,20 +822,34 @@ class Gateway:
         for r in reversed(rows):
             sender = (json.loads(r["sender"]) if r["sender"]
                       else {"id": me, "kind": "self", "consumer": r["consumer"]})
+            # `mentions` sits beside `parts`, the same shape and the same place
+            # as on the live event, so a consumer renders a recorded message
+            # with the code it already uses for a live one.
             out.append({"platform_id": r["platform_id"], "thread": None, "message_id": r["id"],
                         "time": r["time"], "sender": sender, "parts": json.loads(r["parts"]),
+                        "mentions": json.loads(r["mentions"]) if r["mentions"] else [],
                         "person_id": self.identity.lookup(conv["channel"], sender.get("id"),
                                                           sender.get("number")) if r["sender"] else None})
         return out
 
     def _record(self, data: dict, at: str) -> None:
         """Keep a delivered message's content for history on platforms without a history API.
-        Only what reached a consumer as an event: no held senders, no unaddressed group chatter."""
+        Only what reached a consumer as an event: no held senders, no unaddressed group chatter.
+
+        Mentions are recorded with the parts, and not because they are nice to
+        have. On Signal a mention is not in the text: the body carries one
+        U+FFFC per mention and the names live beside it, in `start`/`length`/
+        `id`. Keeping the body without them stores a sentence with holes in it,
+        and a consumer reading that back has no way to tell a mention it could
+        not resolve from a user who typed the placeholder. Observed: a message
+        naming two people came back from history as "help @someone and
+        @someone", and the model answered that nobody had been named."""
         a = self.messaging.get(data["channel"])
         if a is None or a.capabilities.get("history"):
             return                                                # the platform keeps it
         self.store.set_message(data["message_id"], sender=json.dumps(data["sender"]),
-                               parts=json.dumps(data["parts"]), time=at)
+                               parts=json.dumps(data["parts"]), time=at,
+                               mentions=json.dumps(data.get("mentions") or []))
 
     def peer_person(self, cid: str) -> str | None:
         """The person on the other end of a direct conversation, if gateway.yaml names them."""
