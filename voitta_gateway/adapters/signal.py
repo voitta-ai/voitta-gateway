@@ -400,7 +400,8 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             dm = em.get("dataMessage") or {}
             key, kind = self._conv(env, dm)
             self.gw.inbound_edit(self.name, key, kind, sender_id,
-                                 f"{sender_id}:{em.get('targetSentTimestamp')}", self._parts(dm), ts)
+                                 f"{sender_id}:{em.get('targetSentTimestamp')}", self._parts(dm), ts,
+                                 mentions=self._mentions(dm))
             return
 
         dm = env.get("dataMessage")
