@@ -729,6 +729,23 @@ components:
             name: {type: [string, "null"]}
             team: {type: [string, "null"]}
         parts: {type: array, items: {$ref: "#/components/schemas/Part"}}
+        mentions:
+          type: [array, "null"]
+          description: |
+            As on the inbound event, and only from the gateway's own record (Signal): offsets in
+            UTF-16 code units, each mention one U+FFFC in the text. Absent from platform-API
+            history (Slack). Without these the recorded text is a sentence with holes in it, and a
+            reader cannot tell an unresolved mention from someone who typed the placeholder.
+            null when none were recorded: a message received before the gateway recorded
+            mentions, or one sent through this API, whose mentions are in `parts[].mentions`
+            (offsets into that part's text) as they were sent.
+          items:
+            type: object
+            properties:
+              id: {type: [string, "null"], description: "ACI, or number"}
+              start: {type: [integer, "null"]}
+              length: {type: [integer, "null"]}
+              self: {type: boolean, description: "this account was mentioned"}
         message_id: {type: [string, "null"], description: "our id, if the gateway has seen this message"}
         person_id: {type: [string, "null"]}
     BlocksPart:

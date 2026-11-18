@@ -600,8 +600,9 @@ class Gateway:
         return self.addressing(channel, key, kind, text, row, about=True)
 
     def _held_change(self, channel: str, key: dict, kind: str, target_platform: str,
-                     parts: list[dict] | None) -> None:
-        """A held sender edited or deleted a held message: release what they last sent, or nothing."""
+                     parts: list[dict] | None, mentions: list[dict] | None = None) -> None:
+        """A held sender edited or deleted a held message: release what they last sent, or nothing.
+        The edit's mentions replace the original's, since their offsets index the new text."""
         if self.closed(channel, key, kind):
             return
         row = self.store.message_by_platform(self.conv_id(channel, key, kind), target_platform)
@@ -615,22 +616,28 @@ class Gateway:
             if parts is None:
                 self.store.x("DELETE FROM held WHERE id=?", h["id"])
             else:
-                self.store.x("UPDATE held SET data=? WHERE id=?", json.dumps({**data, "parts": parts}), h["id"])
+                self.store.x("UPDATE held SET data=? WHERE id=?", json.dumps({**data, "parts": parts, **({} if mentions is None else {"mentions": mentions})}),
+                             h["id"])
 
     def inbound_edit(self, channel: str, key: dict, kind: str, sender_id: str,
-                     target_platform: str, parts: list[dict], time_ms: int) -> None:
+                     target_platform: str, parts: list[dict], time_ms: int,
+                     mentions: list[dict] | None = None) -> None:
+        """`mentions` are the edited text's own (Signal). They replace the recorded ones: the old
+        offsets index the old text, and kept beside the new one they would name the wrong
+        person or point at no U+FFFC at all."""
         k = self._known(channel, key, kind, sender_id)
         if not k:
-            self._held_change(channel, key, kind, target_platform, parts)
+            self._held_change(channel, key, kind, target_platform, parts, mentions)
             return
         cid, person = k
         row = self.store.message_by_platform(cid, target_platform)
         if row and row["parts"] is not None:
-            self.store.set_message(row["id"], parts=json.dumps(parts))
+            self.store.set_message(row["id"], parts=json.dumps(parts), mentions=json.dumps(mentions or []))
         self.events.append("message.edited", self.source(channel),
                            {"conversation_id": cid, "message_id": row["id"] if row else None,
                             "platform_id": target_platform, "person_id": person,
                             "sender": {"id": sender_id}, "parts": parts,
+                            **({} if mentions is None else {"mentions": mentions}),
                             **self._about(channel, key, kind, row, " ".join(
                                 p.get("text", "") for p in parts if p.get("type") == "text"))},
                            subject=cid, time=ms_to_iso(time_ms))
@@ -644,7 +651,7 @@ class Gateway:
         cid, person = k
         row = self.store.message_by_platform(cid, target_platform)
         if row:
-            self.store.set_message(row["id"], parts=None)
+            self.store.set_message(row["id"], parts=None, mentions=None)   # a mention is who was named: gone with the text
         self.events.append("message.deleted", self.source(channel),
                            {"conversation_id": cid, "message_id": row["id"] if row else None,
                             "platform_id": target_platform, "person_id": person,
@@ -822,20 +829,37 @@ class Gateway:
         for r in reversed(rows):
             sender = (json.loads(r["sender"]) if r["sender"]
                       else {"id": me, "kind": "self", "consumer": r["consumer"]})
+            # `mentions` sits beside `parts`, the same shape and the same place
+            # as on the live event, so a consumer renders a recorded message
+            # with the code it already uses for a live one. NULL (a row from
+            # before mentions were recorded, or one of ours, whose mentions are
+            # in its parts) reads as null, not [], so "none recorded" is not
+            # mistaken for "nobody named".
             out.append({"platform_id": r["platform_id"], "thread": None, "message_id": r["id"],
                         "time": r["time"], "sender": sender, "parts": json.loads(r["parts"]),
+                        "mentions": None if r["mentions"] is None else json.loads(r["mentions"]),
                         "person_id": self.identity.lookup(conv["channel"], sender.get("id"),
                                                           sender.get("number")) if r["sender"] else None})
         return out
 
     def _record(self, data: dict, at: str) -> None:
         """Keep a delivered message's content for history on platforms without a history API.
-        Only what reached a consumer as an event: no held senders, no unaddressed group chatter."""
+        Only what reached a consumer as an event: no held senders, no unaddressed group chatter.
+
+        Mentions are recorded with the parts, and not because they are nice to
+        have. On Signal a mention is not in the text: the body carries one
+        U+FFFC per mention and the names live beside it, in `start`/`length`/
+        `id`. Keeping the body without them stores a sentence with holes in it,
+        and a consumer reading that back has no way to tell a mention it could
+        not resolve from a user who typed the placeholder. Observed: a message
+        naming two people came back from history as "help @someone and
+        @someone", and the model answered that nobody had been named."""
         a = self.messaging.get(data["channel"])
         if a is None or a.capabilities.get("history"):
             return                                                # the platform keeps it
         self.store.set_message(data["message_id"], sender=json.dumps(data["sender"]),
-                               parts=json.dumps(data["parts"]), time=at)
+                               parts=json.dumps(data["parts"]), time=at,
+                               mentions=json.dumps(data.get("mentions") or []))
 
     def peer_person(self, cid: str) -> str | None:
         """The person on the other end of a direct conversation, if gateway.yaml names them."""

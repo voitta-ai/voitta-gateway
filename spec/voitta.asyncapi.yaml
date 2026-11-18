@@ -341,6 +341,16 @@ components:
                 person_id: {$ref: "#/components/schemas/PersonId"}
                 sender: {$ref: "#/components/schemas/Sender"}
                 parts: {type: array, items: {$ref: "#/components/schemas/Part"}}
+                mentions:
+                  type: array
+                  description: "Signal: the edited text's own, as on message.received; they replace the original's"
+                  items:
+                    type: object
+                    properties:
+                      id: {type: [string, "null"], description: "ACI, or number"}
+                      start: {type: [integer, "null"]}
+                      length: {type: [integer, "null"]}
+                      self: {type: boolean, description: "this account was mentioned"}
 
     MessageDeletedEvent:
       allOf:
