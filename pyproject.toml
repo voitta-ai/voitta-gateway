@@ -1,6 +1,6 @@
 [project]
 name = "voitta-gateway"
-version = "0.1.0"
+version = "0.2.0"
 description = "Messaging and voice gateway for Voitta agents: Signal, Slack, phone (Telnyx)"
 requires-python = ">=3.11"
 dependencies = [
