@@ -55,6 +55,7 @@ channels:
       operationDone: {$ref: "#/components/messages/operationDone"}
       operationFailed: {$ref: "#/components/messages/operationFailed"}
       interactionReceived: {$ref: "#/components/messages/interactionReceived"}
+      groupInvited: {$ref: "#/components/messages/groupInvited"}
       callRinging: {$ref: "#/components/messages/callRinging"}
       callAnswered: {$ref: "#/components/messages/callAnswered"}
       callDtmf: {$ref: "#/components/messages/callDtmf"}
@@ -109,6 +110,7 @@ operations:
       - {$ref: "#/channels/events/messages/operationDone"}
       - {$ref: "#/channels/events/messages/operationFailed"}
       - {$ref: "#/channels/events/messages/interactionReceived"}
+      - {$ref: "#/channels/events/messages/groupInvited"}
       - {$ref: "#/channels/events/messages/callRinging"}
       - {$ref: "#/channels/events/messages/callAnswered"}
       - {$ref: "#/channels/events/messages/callDtmf"}
@@ -157,6 +159,7 @@ components:
     contactOptedIn: {name: ai.voitta.contact.opted_in.v1, summary: "sender sent START after STOP", payload: {$ref: "#/components/schemas/ContactOptedInEvent"}}
     operationDone: {name: ai.voitta.operation.done.v1, summary: "edit / delete / react went through", payload: {$ref: "#/components/schemas/OperationDoneEvent"}}
     operationFailed: {name: ai.voitta.operation.failed.v1, payload: {$ref: "#/components/schemas/OperationFailedEvent"}}
+    groupInvited: {name: ai.voitta.group.invited.v1, summary: "the Signal account was invited to a group (admin tokens only); accept with POST /v1/signal/groups/{id}/accept", payload: {$ref: "#/components/schemas/GroupInvitedEvent"}}
     interactionReceived: {name: ai.voitta.interaction.received.v1, summary: "a button or menu in one of our messages was used (Slack)", payload: {$ref: "#/components/schemas/InteractionReceivedEvent"}}
     callRinging: {name: ai.voitta.call.ringing.v1, payload: {$ref: "#/components/schemas/CallRingingEvent"}}
     callAnswered: {name: ai.voitta.call.answered.v1, payload: {$ref: "#/components/schemas/CallAnsweredEvent"}}
@@ -196,6 +199,7 @@ components:
         - {$ref: "#/components/schemas/OperationDoneEvent"}
         - {$ref: "#/components/schemas/OperationFailedEvent"}
         - {$ref: "#/components/schemas/InteractionReceivedEvent"}
+        - {$ref: "#/components/schemas/GroupInvitedEvent"}
         - {$ref: "#/components/schemas/CallRingingEvent"}
         - {$ref: "#/components/schemas/CallAnsweredEvent"}
         - {$ref: "#/components/schemas/CallDtmfEvent"}
@@ -438,7 +442,7 @@ components:
                 addressed_to: {$ref: "#/components/schemas/AddressedTo"}
                 conversation: {type: string, description: "label in gateway.yaml conversations (mapped groups only)"}
                 op_id: {type: string, pattern: "^op_"}
-                op: {type: string, enum: [edit, delete, react]}
+                op: {type: string, enum: [edit, delete, react, poll_vote, poll_end, pin, unpin, disappearing]}
                 conversation_id: {type: string}
 
     InteractionReceivedEvent:
@@ -463,6 +467,22 @@ components:
                 action_type: {type: [string, "null"], description: "button, static_select, ..."}
                 value: {type: [string, "null"]}
 
+    GroupInvitedEvent:
+      allOf:
+        - {$ref: "#/components/schemas/Envelope"}
+        - type: object
+          properties:
+            type: {const: ai.voitta.group.invited.v1}
+            data:
+              type: object
+              required: [channel, group, name, listed, addressed_to]
+              properties:
+                channel: {const: signal}
+                group: {type: string, description: "the group id, for `conversations` in gateway.yaml"}
+                name: {type: [string, "null"]}
+                listed: {type: boolean, description: "already listed under `conversations`"}
+                addressed_to: {const: "", description: "admin tokens only"}
+
     OperationFailedEvent:
       allOf:
         - {$ref: "#/components/schemas/ConversationEvent"}
@@ -476,7 +496,7 @@ components:
                 addressed_to: {$ref: "#/components/schemas/AddressedTo"}
                 conversation: {type: string, description: "label in gateway.yaml conversations (mapped groups only)"}
                 op_id: {type: string, pattern: "^op_"}
-                op: {type: string, enum: [edit, delete, react]}
+                op: {type: string, enum: [edit, delete, react, poll_vote, poll_end, pin, unpin, disappearing]}
                 conversation_id: {type: string}
                 error: {type: string}
 
@@ -615,6 +635,7 @@ components:
         name: {type: [string, "null"]}
         team: {type: [string, "null"]}
         kind: {type: string, enum: [human, bot], description: "bot: another app's post that mentioned us (Slack)"}
+        contact_name: {type: string, description: "as saved in the Signal account's address book"}
     Part:
       oneOf:
         - type: object
@@ -622,6 +643,15 @@ components:
           properties:
             type: {const: text}
             text: {type: string}
+            styles:
+              type: array
+              description: "formatting, as on outbound text: UTF-16 code unit ranges (Signal)"
+              items:
+                type: object
+                properties:
+                  start: {type: [integer, "null"]}
+                  length: {type: [integer, "null"]}
+                  style: {type: string}
         - type: object
           required: [type, attachment_id]
           properties:
@@ -638,12 +668,75 @@ components:
             transcript: {type: string, description: "audio parts: what was said"}
             transcript_source: {type: string, enum: [slack, voitta-speech]}
             transcript_error: {type: string}
+            voice_note: {type: boolean, description: "recorded as a voice note (Signal)"}
+            view_once: {type: boolean, description: "sent as view-once (Signal)"}
         - type: object
           required: [type]
           properties:
             type: {const: sticker}
             pack_id: {type: [string, "null"]}
             sticker_id: {type: [integer, string, "null"]}
+        - type: object
+          required: [type, url]
+          properties:
+            type: {const: link_preview}
+            url: {type: [string, "null"]}
+            title: {type: [string, "null"]}
+            description: {type: [string, "null"]}
+        - type: object
+          required: [type, question, options]
+          properties:
+            type: {const: poll}
+            question: {type: [string, "null"]}
+            options: {type: array, items: {type: string}}
+            multiple: {type: boolean}
+        - type: object
+          required: [type, poll, options]
+          properties:
+            type: {const: poll_vote}
+            poll: {type: [string, "null"], description: "the poll's platform id"}
+            options: {type: array, items: {type: integer}}
+            vote_count: {type: [integer, "null"]}
+        - type: object
+          required: [type, poll]
+          properties:
+            type: {const: poll_end}
+            poll: {type: [string, "null"]}
+        - type: object
+          required: [type, target]
+          properties:
+            type: {const: pin}
+            target: {type: [string, "null"], description: "the pinned message's platform id"}
+            duration_s: {type: [integer, "null"]}
+        - type: object
+          required: [type, target]
+          properties:
+            type: {const: unpin}
+            target: {type: [string, "null"]}
+        - type: object
+          required: [type]
+          properties:
+            type: {const: contact}
+            name: {type: [string, "null"]}
+            phones: {type: array, items: {type: string}}
+            emails: {type: array, items: {type: string}}
+            organization: {type: [string, "null"]}
+        - type: object
+          required: [type, seconds]
+          properties:
+            type: {const: disappearing}
+            seconds: {type: integer, minimum: 0}
+        - type: object
+          required: [type]
+          properties:
+            type: {const: payment}
+            note: {type: string}
+        - type: object
+          required: [type, kind]
+          properties:
+            type: {const: other}
+            kind: {type: string}
+            data: {type: object}
 
     # ------------------------------------------------------------ media: gateway -> agent
     GatewayToAgent:

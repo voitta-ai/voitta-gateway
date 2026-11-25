@@ -10,11 +10,12 @@ import asyncio
 import hmac
 import json
 import math
+import re
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from .core import ApiError, Gateway
 from .events import event_seq, matches
@@ -166,6 +167,27 @@ def build_api(gw: Gateway) -> FastAPI:
         return idempotent(p, data, lambda: gw.message_op(
             mid, "react", {"emoji": data["emoji"], "remove": bool(data.get("remove"))}, p.name))
 
+    @app.post("/v1/messages/{mid}/vote")
+    async def vote(mid: str, data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
+        return idempotent(p, data, lambda: gw.message_action(mid, "poll_vote", {"options": data.get("options")}, p.name))
+
+    @app.post("/v1/messages/{mid}/end_poll")
+    async def end_poll(mid: str, data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
+        return idempotent(p, data, lambda: gw.message_action(mid, "poll_end", {}, p.name))
+
+    @app.post("/v1/messages/{mid}/pin")
+    async def pin(mid: str, data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
+        return idempotent(p, data, lambda: gw.message_action(
+            mid, "pin", {"duration_s": data.get("duration_s", -1)}, p.name))
+
+    @app.post("/v1/messages/{mid}/unpin")
+    async def unpin(mid: str, data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
+        return idempotent(p, data, lambda: gw.message_action(mid, "unpin", {}, p.name))
+
+    @app.post("/v1/conversations/{cid}/disappearing")
+    async def disappearing(cid: str, data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
+        return idempotent(p, data, lambda: gw.set_disappearing(cid, data.get("seconds"), p.name))
+
     @app.post("/v1/conversations/{cid}/typing")
     async def typing(cid: str, data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
         await gw.typing(cid, bool(data.get("on", True)), p.name)
@@ -305,6 +327,46 @@ def build_api(gw: Gateway) -> FastAPI:
         raise ApiError(422, "unsupported", "recording is not implemented yet")
 
     # ------------------------------------------------------------ admin
+    # ------------------------------------------------------------ account (Signal): admin
+    def _signal(cap: str):
+        return gw._account_adapter("signal", cap)
+
+    @app.get("/v1/signal/contacts")
+    async def contacts(p: Principal = Depends(need("admin"))):
+        return {"contacts": await _signal("contacts").refresh_contacts()}
+
+    @app.get("/v1/signal/stickers")
+    async def sticker_packs(p: Principal = Depends(need("events:read"))):
+        return {"packs": await _signal("stickers").sticker_packs()}
+
+    @app.post("/v1/signal/stickers")
+    async def add_sticker_pack(data: dict = Depends(body), p: Principal = Depends(need("admin"))):
+        url = data.get("url")
+        if not isinstance(url, str) or not url.startswith("https://signal.art/addstickers/"):
+            raise ApiError(422, "bad_url", "url is a https://signal.art/addstickers/#pack_id=...&pack_key=... link")
+        await _signal("stickers").add_sticker_pack(url)
+        return {"ok": True}
+
+    @app.get("/v1/signal/stickers/{pack_id}/{sticker_id}")
+    async def sticker_image(pack_id: str, sticker_id: int, p: Principal = Depends(need("events:read"))):
+        if not re.fullmatch(r"[0-9a-fA-F]{32}", pack_id):
+            raise ApiError(422, "bad_sticker", "pack_id is 32 hex characters")
+        data, ctype = await _signal("stickers").sticker_image(pack_id, sticker_id)
+        return Response(data, media_type=ctype)
+
+    @app.post("/v1/signal/groups/join")
+    async def join_group(data: dict = Depends(body), p: Principal = Depends(need("admin"))):
+        """Join by invite link. The group stays closed until listed under `conversations`."""
+        uri = data.get("uri")
+        if not isinstance(uri, str) or not uri.startswith("https://signal.group/#"):
+            raise ApiError(422, "bad_uri", "uri is a https://signal.group/#... link")
+        return await _signal("group_invites").join_group(uri)
+
+    @app.post("/v1/signal/groups/{group_id}/accept")
+    async def accept_invite(group_id: str, p: Principal = Depends(need("admin"))):
+        await _signal("group_invites").accept_invite(group_id)
+        return {"ok": True}
+
     @app.get("/v1/held")
     async def held(p: Principal = Depends(need("admin"))):
         return {"held": gw.held()}

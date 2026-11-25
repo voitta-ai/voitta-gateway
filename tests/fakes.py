@@ -31,6 +31,9 @@ class FakeSignalCli:
         self.server = None
         self.connected = asyncio.Event()
         self.next_call_devices = ("signal_input_1", "signal_output_1")
+        self.groups: list[dict] = []                     # listGroups answers (signal-cli's JSON shape)
+        self.contacts: list[dict] = []                   # listContacts answers
+        self.sticker_packs: list[dict] = []
 
     async def start(self):
         self.server = await asyncio.start_server(self._client, "127.0.0.1", self.port)
@@ -66,6 +69,20 @@ class FakeSignalCli:
         if method in ("sendReaction", "remoteDelete"):
             self.ts += 1000
             return {"timestamp": self.ts}
+        if method in ("sendPollCreate", "sendPollVote", "sendPollTerminate", "sendPinMessage", "sendUnpinMessage"):
+            self.ts += 1000
+            return {"timestamp": self.ts, "results": [{"type": "SUCCESS"}]}
+        if method == "listGroups":
+            return [g for g in self.groups if not params.get("groupId") or g["id"] == params["groupId"]]
+        if method == "listContacts":
+            return self.contacts
+        if method == "listStickerPacks":
+            return self.sticker_packs
+        if method == "getSticker":
+            import base64
+            return {"data": base64.b64encode(b"RIFF\x00\x00\x00\x00WEBPVP8 ").decode()}
+        if method == "joinGroup":
+            return {"timestamp": self.ts, "results": [], "groupId": "Z3JvdXAtam9pbmVk"}
         if method == "acceptCall":
             i, o = self.next_call_devices
             return {"callId": params["callId"], "state": "CONNECTING", "inputDeviceName": i, "outputDeviceName": o}

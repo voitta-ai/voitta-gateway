@@ -783,9 +783,40 @@ class Gateway:
     def _check_parts(self, channel: str, adapter: MessagingAdapter, parts: list[dict]) -> None:
         if not parts:
             raise ApiError(422, "empty", "parts is empty")
+        caps = adapter.capabilities
+
+        def need(cap: str, what: str) -> None:
+            if not caps.get(cap):
+                raise ApiError(422, "unsupported", f"{channel} does not support {what}")
+
+        polls = [p for p in parts if p.get("type") == "poll"]
+        if polls and len(parts) != 1:
+            raise ApiError(422, "bad_parts", "a poll is sent on its own, as the only part")
+        if sum(p.get("type") == "sticker" for p in parts) > 1 or sum(p.get("type") == "link_preview" for p in parts) > 1:
+            raise ApiError(422, "bad_parts", "at most one sticker and one link_preview per message")
         for p in parts:
-            if p.get("type") == "file" and not self.store.file(p.get("attachment_id") or ""):
+            t = p.get("type")
+            if t == "file" and not self.store.file(p.get("attachment_id") or ""):
                 raise ApiError(422, "unknown_attachment", str(p.get("attachment_id")))
+            if t == "file" and p.get("view_once"):
+                need("view_once", "view-once media")
+            if t == "sticker":
+                need("stickers", "stickers")
+                if not isinstance(p.get("pack_id"), str) or not str(p.get("sticker_id", "")).isdigit():
+                    raise ApiError(422, "bad_sticker", "a sticker needs pack_id and a numeric sticker_id")
+            if t == "link_preview":
+                need("link_previews", "link previews")
+                url = p.get("url")
+                texts = " ".join(x.get("text", "") for x in parts if x.get("type") == "text")
+                if not isinstance(url, str) or not url.startswith(("https://", "http://")) or url not in texts:
+                    raise ApiError(422, "bad_preview", "a link_preview needs an http(s) url that appears in the text")
+            if t == "poll":
+                need("polls", "polls")
+                opts = p.get("options")
+                if (not isinstance(p.get("question"), str) or not p["question"].strip()
+                        or not isinstance(opts, list) or not 2 <= len(opts) <= 10
+                        or not all(isinstance(o, str) and o.strip() for o in opts)):
+                    raise ApiError(422, "bad_poll", "a poll needs a question and 2 to 10 non-empty options")
             if p.get("type") == "blocks":
                 if not adapter.capabilities.get("blocks"):
                     raise ApiError(422, "unsupported", f"{channel} does not support blocks")
@@ -983,6 +1014,78 @@ class Gateway:
         opid = new_id("op")
         self.outbox.enqueue(opid, conv["channel"], conv["id"], op, payload)
         return {"op_id": opid, "message_id": mid, "status": "queued"}
+
+    # ================================================================ conversation actions (Signal)
+    ACTIONS = {"poll_vote": "polls", "poll_end": "polls", "pin": "pins", "unpin": "pins"}
+
+    def message_action(self, mid: str, op: str, payload: dict, consumer: str | None = None) -> dict:
+        """Poll votes and ends, pins: actions on an earlier message, queued like edits and reactions."""
+        row = self.store.message(mid)
+        if not row:
+            raise ApiError(404, "unknown_message", mid)
+        conv = self.store.conversation_row(row["conversation_id"])
+        self.check_scope(consumer, conv["channel"], json.loads(conv["platform_key"]), conv["kind"], "send")
+        adapter = self.adapter(conv["channel"])
+        if not adapter.capabilities.get(self.ACTIONS[op]):
+            raise ApiError(422, "unsupported", f"{conv['channel']} does not support {self.ACTIONS[op]}")
+        if not row["platform_id"]:
+            raise ApiError(409, "not_sent_yet", "message has no platform id yet")
+        if row["status"] == "deleted":
+            raise ApiError(409, "deleted", "that message was deleted")
+        if op in ("poll_vote", "poll_end"):
+            parts = json.loads(row["parts"]) if row["parts"] else None
+            is_poll = parts is not None and any(p.get("type") == "poll" for p in parts)
+            if parts is not None and not is_poll:
+                raise ApiError(422, "not_a_poll", "that message is not a poll")
+            if op == "poll_end" and row["direction"] != "out":
+                raise ApiError(422, "not_ours", "only the poll's creator can end it")
+            if op == "poll_vote":
+                opts = payload.get("options")
+                if not isinstance(opts, list) or not all(type(o) is int and o >= 0 for o in opts):
+                    raise ApiError(422, "bad_vote", "options is a list of option indexes (0-based); [] withdraws")
+                n = next((len(p["options"]) for p in parts or [] if p.get("type") == "poll"), None)
+                if n is not None and any(o >= n for o in opts):
+                    raise ApiError(422, "bad_vote", f"the poll has {n} options")
+                # Signal needs each new vote's count to grow; the gateway keeps it per poll
+                payload = {**payload, "vote_count": self.store.next_vote(mid)}
+        if op == "pin":
+            d = payload.get("duration_s", -1)
+            if type(d) is not int or (d != -1 and d < 1):
+                raise ApiError(422, "bad_duration", "duration_s is seconds (>= 1), or -1 for no end")
+        payload = {**payload, "key": json.loads(conv["platform_key"]), "consumer": consumer, "message_id": mid,
+                   "act": op, "target": {"platform_id": row["platform_id"], "direction": row["direction"]}}
+        opid = new_id("op")
+        self.outbox.enqueue(opid, conv["channel"], conv["id"], "act", payload)
+        return {"op_id": opid, "message_id": mid, "status": "queued"}
+
+    def set_disappearing(self, cid: str, seconds, consumer: str | None = None) -> dict:
+        row = self.store.conversation_row(cid)
+        if not row:
+            raise ApiError(404, "unknown_conversation", cid)
+        key = json.loads(row["platform_key"])
+        self.check_scope(consumer, row["channel"], key, row["kind"], "send")
+        if not self.adapter(row["channel"]).capabilities.get("disappearing"):
+            raise ApiError(422, "unsupported", f"{row['channel']} has no disappearing messages")
+        if type(seconds) is not int or seconds < 0 or seconds > 4 * 7 * 24 * 3600:
+            raise ApiError(422, "bad_seconds", "seconds is 0 (off) up to 4 weeks")
+        opid = new_id("op")
+        self.outbox.enqueue(opid, row["channel"], cid, "act", {"key": key, "consumer": consumer,
+                                                                 "act": "disappearing", "seconds": seconds})
+        return {"op_id": opid, "conversation_id": cid, "status": "queued"}
+
+    # ================================================================ account (admin)
+    def _account_adapter(self, channel: str, cap: str) -> MessagingAdapter:
+        a = self.adapter(channel)
+        if not a.capabilities.get(cap):
+            raise ApiError(422, "unsupported", f"{channel} does not support {cap}")
+        return a
+
+    def group_invited(self, channel: str, key: dict, name: str | None) -> None:
+        """The account was invited to a group: one notice for admins. Nothing else about the group
+        is kept, and nothing is joined until an admin accepts and lists it under `conversations`."""
+        self.events.append("group.invited", self.source(channel),
+                           {"channel": channel, "group": next(iter(key.values())), "name": name,
+                            "listed": self.listed(channel, key) is not None, "addressed_to": ""})
 
     async def typing(self, cid: str, on: bool, consumer: str | None = None) -> None:
         row = self.store.conversation_row(cid)

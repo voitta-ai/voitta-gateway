@@ -230,6 +230,114 @@ paths:
         "200": {$ref: "#/components/responses/OperationQueued"}
         default: {$ref: "#/components/responses/Error"}
 
+  /v1/messages/{message_id}/vote:
+    post:
+      operationId: votePoll
+      summary: "Vote on a poll (Signal): option indexes, 0-based; [] withdraws the vote"
+      x-scope: messages:send
+      parameters: [{$ref: "#/components/parameters/MessageId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [options]
+              properties:
+                options: {type: array, items: {type: integer, minimum: 0}}
+                idempotency_key: {type: string}
+      responses:
+        "202": {$ref: "#/components/responses/OperationQueued"}
+        "200": {$ref: "#/components/responses/OperationQueued"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/messages/{message_id}/end_poll:
+    post:
+      operationId: endPoll
+      summary: "End a poll this account created (Signal)"
+      x-scope: messages:send
+      parameters: [{$ref: "#/components/parameters/MessageId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                idempotency_key: {type: string}
+      responses:
+        "202": {$ref: "#/components/responses/OperationQueued"}
+        "200": {$ref: "#/components/responses/OperationQueued"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/messages/{message_id}/pin:
+    post:
+      operationId: pinMessage
+      summary: "Pin a message in its conversation (Signal)"
+      x-scope: messages:send
+      parameters: [{$ref: "#/components/parameters/MessageId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                duration_s: {type: integer, default: -1, description: "seconds, or -1 for no end"}
+                idempotency_key: {type: string}
+      responses:
+        "202": {$ref: "#/components/responses/OperationQueued"}
+        "200": {$ref: "#/components/responses/OperationQueued"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/messages/{message_id}/unpin:
+    post:
+      operationId: unpinMessage
+      summary: "Unpin a message (Signal)"
+      x-scope: messages:send
+      parameters: [{$ref: "#/components/parameters/MessageId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                idempotency_key: {type: string}
+      responses:
+        "202": {$ref: "#/components/responses/OperationQueued"}
+        "200": {$ref: "#/components/responses/OperationQueued"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/conversations/{conversation_id}/disappearing:
+    post:
+      operationId: setDisappearing
+      summary: "Set the disappearing-messages timer of a conversation (Signal); 0 turns it off"
+      x-scope: messages:send
+      parameters: [{name: conversation_id, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [seconds]
+              properties:
+                seconds: {type: integer, minimum: 0, maximum: 2419200}
+                idempotency_key: {type: string}
+      responses:
+        "202":
+          description: queued; outcome as operation.done / operation.failed (op disappearing)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConversationOpQueued"}
+        "200":
+          description: duplicate of an earlier request with the same idempotency_key
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConversationOpQueued"}
+        default: {$ref: "#/components/responses/Error"}
+
   /v1/conversations/{conversation_id}/typing:
     post:
       operationId: setTyping
@@ -474,6 +582,135 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
 
+  /v1/signal/contacts:
+    get:
+      operationId: listSignalContacts
+      summary: "The Signal account's address book (names are also added to senders as contact_name)"
+      x-scope: admin
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contacts]
+                properties:
+                  contacts:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, number, name, blocked]
+                      properties:
+                        id: {type: [string, "null"], description: "ACI, or number"}
+                        number: {type: [string, "null"]}
+                        name: {type: [string, "null"]}
+                        blocked: {type: boolean}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/signal/stickers:
+    get:
+      operationId: listStickerPacks
+      summary: "Sticker packs this Signal account knows, with their stickers"
+      x-scope: events:read
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [packs]
+                properties:
+                  packs:
+                    type: array
+                    items:
+                      type: object
+                      required: [pack_id, title, author, installed, stickers]
+                      properties:
+                        pack_id: {type: [string, "null"]}
+                        title: {type: [string, "null"]}
+                        author: {type: [string, "null"]}
+                        installed: {type: boolean}
+                        url: {type: [string, "null"]}
+                        stickers:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              sticker_id: {type: [integer, "null"]}
+                              emoji: {type: [string, "null"]}
+                              content_type: {type: [string, "null"]}
+        default: {$ref: "#/components/responses/Error"}
+    post:
+      operationId: addStickerPack
+      summary: "Install a sticker pack from its signal.art link"
+      x-scope: admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: {type: string, pattern: "^https://signal\\.art/addstickers/"}
+      responses:
+        "200": {$ref: "#/components/responses/Ok"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/signal/stickers/{pack_id}/{sticker_id}:
+    get:
+      operationId: getStickerImage
+      summary: "A sticker's image (webp or png), e.g. for a sticker part someone sent"
+      x-scope: events:read
+      parameters:
+        - {name: pack_id, in: path, required: true, schema: {type: string, pattern: "^[0-9a-fA-F]{32}$"}}
+        - {name: sticker_id, in: path, required: true, schema: {type: integer, minimum: 0}}
+      responses:
+        "200":
+          description: the image
+          content:
+            image/webp: {schema: {type: string, contentMediaType: image/webp}}
+            image/png: {schema: {type: string, contentMediaType: image/png}}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/signal/groups/join:
+    post:
+      operationId: joinGroup
+      summary: "Join a group by its invite link; it stays closed until listed under `conversations`"
+      x-scope: admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [uri]
+              properties:
+                uri: {type: string, pattern: "^https://signal\\.group/#"}
+      responses:
+        "200":
+          description: joined (or a join request sent, for groups that approve members)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [group]
+                properties:
+                  group: {type: [string, "null"], description: "the group id, for `conversations`"}
+        default: {$ref: "#/components/responses/Error"}
+
+  /v1/signal/groups/{group_id}/accept:
+    post:
+      operationId: acceptGroupInvite
+      summary: "Accept a pending invitation (see the group.invited event); the group stays closed until listed"
+      x-scope: admin
+      parameters: [{name: group_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {$ref: "#/components/responses/Ok"}
+        default: {$ref: "#/components/responses/Error"}
+
   /v1/held:
     get:
       operationId: listHeld
@@ -616,6 +853,14 @@ components:
           schema: {$ref: "#/components/schemas/CallView"}
 
   schemas:
+    ConversationOpQueued:
+      type: object
+      required: [op_id, conversation_id, status]
+      properties:
+        op_id: {type: string, pattern: "^op_"}
+        conversation_id: {type: string}
+        status: {const: queued}
+        duplicate: {type: boolean}
     Error:
       type: object
       required: [error]
@@ -683,6 +928,14 @@ components:
             max_text_bytes: {type: integer, description: "text limit in UTF-8 bytes, parts joined by newlines; longer sends are 422 too_long"}
             styles: {type: boolean, description: "text parts accept `styles`"}
             mentions: {type: boolean, description: "text parts accept `mentions`"}
+            stickers: {type: boolean, description: "sticker parts; GET /v1/signal/stickers"}
+            view_once: {type: boolean, description: "file parts accept `view_once`"}
+            link_previews: {type: boolean, description: "link_preview parts"}
+            polls: {type: boolean, description: "poll parts; vote and end_poll"}
+            pins: {type: boolean, description: "pin and unpin"}
+            disappearing: {type: boolean, description: "POST /v1/conversations/{id}/disappearing"}
+            contacts: {type: boolean, description: "address-book names on senders; GET /v1/signal/contacts"}
+            group_invites: {type: boolean, description: "group.invited events; join and accept"}
         calls:
           description: call capabilities, null for messaging-only channels
           type: [object, "null"]
@@ -713,6 +966,16 @@ components:
         - {$ref: "#/components/schemas/FilePart"}
         - {$ref: "#/components/schemas/StickerPart"}
         - {$ref: "#/components/schemas/BlocksPart"}
+        - {$ref: "#/components/schemas/LinkPreviewPart"}
+        - {$ref: "#/components/schemas/PollPart"}
+        - {$ref: "#/components/schemas/PollVotePart"}
+        - {$ref: "#/components/schemas/PollEndPart"}
+        - {$ref: "#/components/schemas/PinPart"}
+        - {$ref: "#/components/schemas/UnpinPart"}
+        - {$ref: "#/components/schemas/ContactPart"}
+        - {$ref: "#/components/schemas/DisappearingPart"}
+        - {$ref: "#/components/schemas/PaymentPart"}
+        - {$ref: "#/components/schemas/OtherPart"}
     HistoryMessage:
       type: object
       required: [platform_id, thread, time, sender, parts, message_id, person_id]
@@ -799,6 +1062,8 @@ components:
         transcript: {type: string, description: "audio parts: what was said"}
         transcript_source: {type: string, enum: [slack, voitta-speech]}
         transcript_error: {type: string}
+        voice_note: {type: boolean, description: "recorded as a voice note (Signal), not an audio file"}
+        view_once: {type: boolean, description: "inbound: sent as view-once; outbound: send it view-once (Signal)"}
     StickerPart:
       type: object
       required: [type]
@@ -806,6 +1071,87 @@ components:
         type: {const: sticker}
         pack_id: {type: [string, "null"]}
         sticker_id: {type: [integer, string, "null"]}
+
+    LinkPreviewPart:
+      description: "a link preview card (Signal). Outbound: the url must appear in the message text"
+      type: object
+      required: [type, url]
+      properties:
+        type: {const: link_preview}
+        url: {type: [string, "null"]}
+        title: {type: [string, "null"]}
+        description: {type: [string, "null"]}
+    PollPart:
+      description: "a poll (Signal). Outbound: sent on its own, as the only part"
+      type: object
+      required: [type, question, options]
+      properties:
+        type: {const: poll}
+        question: {type: [string, "null"], minLength: 1}
+        options: {type: array, minItems: 2, maxItems: 10, items: {type: string}}
+        multiple: {type: boolean, default: true, description: "voters may pick several options"}
+    PollVotePart:
+      description: "inbound: someone voted (Signal); `poll` is the poll's platform id"
+      type: object
+      required: [type, poll, options]
+      properties:
+        type: {const: poll_vote}
+        poll: {type: [string, "null"]}
+        options: {type: array, items: {type: integer}}
+        vote_count: {type: [integer, "null"], description: "the voter's vote number; the highest one stands"}
+    PollEndPart:
+      description: "inbound: the poll's creator ended it (Signal)"
+      type: object
+      required: [type, poll]
+      properties:
+        type: {const: poll_end}
+        poll: {type: [string, "null"]}
+    PinPart:
+      description: "inbound: a message was pinned (Signal); `target` is its platform id"
+      type: object
+      required: [type, target]
+      properties:
+        type: {const: pin}
+        target: {type: [string, "null"]}
+        duration_s: {type: [integer, "null"], description: "-1: no end"}
+    UnpinPart:
+      type: object
+      required: [type, target]
+      properties:
+        type: {const: unpin}
+        target: {type: [string, "null"]}
+    ContactPart:
+      description: "inbound: a shared contact card (Signal)"
+      type: object
+      required: [type]
+      properties:
+        type: {const: contact}
+        name: {type: [string, "null"]}
+        phones: {type: array, items: {type: string}}
+        emails: {type: array, items: {type: string}}
+        organization: {type: [string, "null"]}
+    DisappearingPart:
+      description: "inbound: the conversation's disappearing-messages timer changed (Signal); 0 = off"
+      type: object
+      required: [type, seconds]
+      properties:
+        type: {const: disappearing}
+        seconds: {type: integer, minimum: 0}
+    PaymentPart:
+      description: "inbound: a payment notification (Signal); only its note, never amounts or receipts"
+      type: object
+      required: [type]
+      properties:
+        type: {const: payment}
+        note: {type: string}
+    OtherPart:
+      description: "inbound: something the gateway does not model yet (e.g. group call updates)"
+      type: object
+      required: [type, kind]
+      properties:
+        type: {const: other}
+        kind: {type: string}
+        data: {type: object}
 
     Target:
       description: where a message goes

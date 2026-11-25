@@ -181,7 +181,9 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
     capabilities = {"text": True, "attachments": True, "reactions": True, "edit": True,
                     "delete": True, "typing": True, "threads": False, "receipts": ["delivered", "read"],
                     "max_attachment_mb": 100, "max_text_bytes": 2000, "styles": True,
-                    "mentions": True}
+                    "mentions": True, "stickers": True, "view_once": True, "link_previews": True,
+                    "polls": True, "pins": True, "disappearing": True, "contacts": True,
+                    "group_invites": True}
     min_interval_s = 0.3
 
     def __init__(self, cfg: SignalConfig, port_factory=None):
@@ -200,6 +202,9 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
         self.ports: dict[str, PulsePort] = {}
         self.port_factory = port_factory or (lambda i, o: PulsePort(i, o, cfg.pulse_latency_ms))
         self.task: asyncio.Task | None = None
+        self.contact_names: dict[str, str] = {}               # ACI / number -> address-book name
+        self.invites_seen: set[str] = set()                   # groups already reported as invitations
+        self._bg: set[asyncio.Task] = set()                   # background lookups, kept so they finish
         att = cfg.attachments_dir or (Path(cfg.data_dir) / "attachments" if cfg.data_dir
                                       else Path.home() / ".local/share/signal-cli/attachments")
         self.attachments = Path(att)
@@ -259,6 +264,7 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
                     await self.rpc.call("subscribeCallEvents")
                 if not self.aci:
                     await self._learn_aci()
+                await self.refresh_contacts()
                 self.gw.channel_state(self.name, True)
                 delay = 0.5
                 await self.rpc.closed.wait()
@@ -284,6 +290,53 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
         except Exception as e:
             log.warning("could not look up our own ACI (set adapters.signal.aci): %s", scrub.ids(e))
 
+    async def refresh_contacts(self) -> list[dict]:
+        """The account's address book: names keyed by ACI and number. Best effort: a failure leaves
+        the previous names, and senders are still known by their profile name."""
+        try:
+            contacts = await self.rpc.call("listContacts", timeout=30) or []
+        except Exception as e:
+            log.warning("could not list contacts: %s", scrub.ids(e))
+            return []
+        names, out = {}, []
+        for c in contacts:
+            name = (c.get("name") or " ".join(filter(None, [c.get("givenName"), c.get("familyName")]))
+                    or (c.get("profile") or {}).get("givenName") or None)
+            for k in (c.get("uuid"), c.get("number")):
+                if k and name:
+                    names[k] = name
+            out.append({"id": c.get("uuid") or c.get("number"), "number": c.get("number"), "name": name,
+                        "blocked": bool(c.get("isBlocked"))})
+        self.contact_names = names
+        return out
+
+    async def _note_invite(self, group_id: str) -> None:
+        """A message from a group this account is only invited to (a pending member) becomes one
+        `group.invited` notice for an admin to act on; the gateway never joins by itself.
+
+        Runs as its own task: it is reached from a notification, which the JSON-RPC reader awaits
+        inline, and the reader is the only thing that can deliver listGroups' reply. Awaited there,
+        the call would wait on itself until its timeout."""
+        if group_id in self.invites_seen:
+            return
+        self.invites_seen.add(group_id)
+        task = asyncio.create_task(self._check_invite(group_id), name="signal-invite-check")
+        self._bg.add(task)
+        task.add_done_callback(self._bg.discard)
+
+    async def _check_invite(self, group_id: str) -> None:
+        try:
+            groups = await self._rpc("listGroups", timeout=15, detailed=True, groupId=group_id)
+        except Exception:
+            self.invites_seen.discard(group_id)               # ask again next time
+            return
+        g = next((x for x in groups or [] if x.get("id") == group_id), None)
+        if not g or g.get("isMember", True):
+            return
+        pending = {m.get("uuid") or m.get("number") for m in g.get("pendingMembers") or []}
+        if self.me in pending or self.account in pending:
+            self.gw.group_invited(self.name, {"group": group_id}, g.get("name"))
+
     async def stop(self) -> None:
         if self.task:
             self.task.cancel()
@@ -303,7 +356,11 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
         result = params.get("result", params) if "subscription" in params else params
         if method == "receive":
             if self._closed_group(result):
-                return                                    # unlisted group: not even the raw envelope is kept
+                # Unlisted group: not even the raw envelope is kept. Only its id is looked at, to tell
+                # an admin about an invitation (the usual way to learn of a new group).
+                for g in set(_group_ids(result.get("envelope") or {})):
+                    await self._note_invite(g)
+                return
             rid = self.gw.store.x("INSERT INTO raw_inbound (channel, body) VALUES (?,?)",
                                   self.name, json.dumps(result)).lastrowid
             await self._process(result)
@@ -351,10 +408,22 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             return {"group": group}, "group"
         return {"peer": env.get("sourceUuid") or env.get("sourceNumber")}, "direct"
 
+    def _ref(self, uuid: str | None, number: str | None, ts) -> str | None:
+        """A platform id ("<author>:<timestamp>") for a message another one points at."""
+        return f"{self._author(uuid, number)}:{ts}" if ts else None
+
     def _parts(self, dm: dict) -> list[dict]:
+        """Everything a Signal data message can carry, as typed parts. What the gateway does not
+        model yet is passed on as an `other` part instead of dropped."""
         parts = []
         if dm.get("message"):
-            parts.append({"type": "text", "text": dm["message"]})
+            text = {"type": "text", "text": dm["message"]}
+            styles = [{"start": s.get("start"), "length": s.get("length"), "style": s.get("style")}
+                      for s in dm.get("textStyles") or [] if s.get("style")]
+            if styles:
+                text["styles"] = styles                       # UTF-16 code units, as on outbound text
+            parts.append(text)
+        view_once = bool(dm.get("viewOnce"))
         for a in dm.get("attachments") or []:
             path = self.attachments / str(a.get("id"))
             if path.exists():
@@ -364,10 +433,51 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
                         "filename": a.get("filename"), "size": a.get("size"), "missing": True}
             if a.get("caption"):
                 part["caption"] = a["caption"]
+            if a.get("isVoiceNote"):
+                part["voice_note"] = True
+            if view_once:
+                part["view_once"] = True
             parts.append(part)
-        if dm.get("sticker"):
-            parts.append({"type": "sticker", "pack_id": dm["sticker"].get("packId"),
-                          "sticker_id": dm["sticker"].get("stickerId")})
+        if s := dm.get("sticker"):
+            parts.append({"type": "sticker", "pack_id": s.get("packId"), "sticker_id": s.get("stickerId")})
+        for p in dm.get("previews") or []:
+            parts.append({"type": "link_preview", "url": p.get("url"), "title": p.get("title"),
+                          "description": p.get("description")})
+        for c in dm.get("contacts") or []:                    # signal-cli JsonSharedContact
+            n = c.get("name") or {}
+            parts.append({"type": "contact",
+                          "name": " ".join(filter(None, [n.get("prefix"), n.get("given"), n.get("middle"),
+                                                         n.get("family"), n.get("suffix")])) or n.get("nickname"),
+                          "phones": [p.get("value") for p in c.get("phone") or [] if p.get("value")],
+                          "emails": [e.get("value") for e in c.get("email") or [] if e.get("value")],
+                          "organization": c.get("organization")})
+        if p := dm.get("pollCreate"):
+            parts.append({"type": "poll", "question": p.get("question"), "options": p.get("options") or [],
+                          "multiple": bool(p.get("allowMultiple", True))})
+        if v := dm.get("pollVote"):
+            # authorUuid/authorNumber are the POLL's author (the vote's target), not the voter
+            parts.append({"type": "poll_vote",
+                          "poll": self._ref(v.get("authorUuid"), v.get("authorNumber"), v.get("targetSentTimestamp")),
+                          "options": v.get("optionIndexes") or [], "vote_count": v.get("voteCount")})
+        if t := dm.get("pollTerminate"):
+            # Only a poll's creator can end it, so the poll is the sender's: `_process` fills the
+            # author in, since the sender is not known here.
+            parts.append({"type": "poll_end", "poll_timestamp": t.get("targetSentTimestamp")})
+        if pin := dm.get("pinMessage"):
+            parts.append({"type": "pin", "target": self._ref(pin.get("targetAuthorUuid"),
+                                                             pin.get("targetAuthorNumber"),
+                                                             pin.get("targetSentTimestamp")),
+                          "duration_s": pin.get("pinDurationSeconds", -1)})
+        if unpin := dm.get("unpinMessage"):
+            parts.append({"type": "unpin", "target": self._ref(unpin.get("targetAuthorUuid"),
+                                                               unpin.get("targetAuthorNumber"),
+                                                               unpin.get("targetSentTimestamp"))})
+        if dm.get("isExpirationUpdate"):
+            parts.append({"type": "disappearing", "seconds": dm.get("expiresInSeconds") or 0})
+        if pay := dm.get("payment"):
+            parts.append({"type": "payment", "note": pay.get("note") or ""})
+        if dm.get("groupCallUpdate"):
+            parts.append({"type": "other", "kind": "group_call", "data": {}})
         return parts
 
     def _addressed(self, dm: dict, kind: str) -> bool:
@@ -419,8 +529,13 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             self.gw.inbound_delete(self.name, key, kind, sender_id, f"{sender_id}:{rd.get('timestamp')}", ts)
             return
         parts = self._parts(dm)
+        for p in parts:
+            if p["type"] == "poll_end":                       # only the creator ends a poll: the sender
+                p["poll"] = f"{sender_id}:{p.pop('poll_timestamp')}"
         if not parts:
             return
+        if name := self.contact_names.get(sender_id) or self.contact_names.get(env.get("sourceNumber") or ""):
+            sender["contact_name"] = name                     # as saved in this account's address book
         q = dm.get("quote") or {}
         reply = f"{self._author(q.get('authorUuid'), q.get('authorNumber'))}:{q.get('id')}" if q else None
         await self.gw.inbound_message(Inbound(
@@ -517,7 +632,16 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             at += len(p["text"].encode("utf-16-le")) // 2
         return "\n".join(texts), styles, mentions
 
+    def _target_author(self, author: str) -> str:
+        """signal-cli wants this account's own messages addressed by its number."""
+        return self.account if author == self.me else author
+
     async def send(self, key, parts, reply_to):
+        if poll := next((p for p in parts if p.get("type") == "poll"), None):
+            result = await self._rpc("sendPollCreate", **self._to(key), question=poll["question"],
+                                     option=poll["options"], noMulti=not poll.get("multiple", True))
+            self._check_results(result)
+            return f"{self.me}:{result['timestamp']}", None
         text, styles, mentions = self._text(parts)
         params = {**self._to(key), "message": text}
         if styles:
@@ -529,14 +653,75 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
             if p.get("type") == "file":
                 row = self.gw.store.file(p["attachment_id"])
                 files.append(row["path"])
+                if p.get("view_once"):
+                    params["viewOnce"] = True
+            elif p.get("type") == "sticker":
+                params["sticker"] = f"{p['pack_id']}:{p['sticker_id']}"
+            elif p.get("type") == "link_preview":
+                params.update(previewUrl=p["url"], previewTitle=p.get("title") or p["url"],
+                              previewDescription=p.get("description") or "")
         if files:
             params["attachments"] = files
         if reply_to and reply_to.get("platform_id"):
             author, ts = self._split_ts(reply_to["platform_id"])
-            params.update(quoteTimestamp=ts, quoteAuthor=self.account if author == self.me else author)
+            params.update(quoteTimestamp=ts, quoteAuthor=self._target_author(author))
         result = await self._rpc("send", **params)
         self._check_results(result)
         return f"{self.me}:{result['timestamp']}", None
+
+    async def act(self, key: dict, op: str, payload: dict) -> None:
+        """Conversation actions that are not messages: poll votes and ends, pins, the disappearing timer."""
+        to = self._to(key)
+        if op == "poll_vote":
+            author, ts = self._split_ts(payload["target"]["platform_id"])
+            res = await self._rpc("sendPollVote", **to, pollAuthor=self._target_author(author), pollTimestamp=ts,
+                                  option=payload["options"], voteCount=payload["vote_count"])
+        elif op == "poll_end":
+            author, ts = self._split_ts(payload["target"]["platform_id"])
+            if author != self.me:
+                raise PermanentError("only the poll's creator can end it")
+            res = await self._rpc("sendPollTerminate", **to, pollTimestamp=ts)
+        elif op in ("pin", "unpin"):
+            author, ts = self._split_ts(payload["target"]["platform_id"])
+            extra = {"pinDuration": payload.get("duration_s", -1)} if op == "pin" else {}
+            res = await self._rpc("sendPinMessage" if op == "pin" else "sendUnpinMessage", **to,
+                                  targetAuthor=self._target_author(author), targetTimestamp=ts, **extra)
+        elif op == "disappearing":
+            seconds = int(payload["seconds"])
+            if "groupId" in to:
+                res = await self._rpc("updateGroup", groupId=to["groupId"], expiration=seconds)
+            else:
+                res = await self._rpc("updateContact", recipient=to["recipient"][0], expiration=seconds)
+        else:
+            raise Unsupported(op)
+        if isinstance(res, dict) and res.get("results"):
+            self._check_results(res)
+
+    # ---------------------------------------------------------------- account-level
+    async def sticker_packs(self) -> list[dict]:
+        packs = await self._rpc("listStickerPacks", timeout=30) or []
+        return [{"pack_id": p.get("packId"), "title": p.get("title"), "author": p.get("author"),
+                 "installed": bool(p.get("installed")), "url": p.get("url"),
+                 "stickers": [{"sticker_id": s.get("id"), "emoji": s.get("emoji"),
+                               "content_type": s.get("contentType")} for s in p.get("stickers") or []]}
+                for p in packs]
+
+    async def add_sticker_pack(self, url: str) -> None:
+        await self._rpc("addStickerPack", uri=url)
+
+    async def sticker_image(self, pack_id: str, sticker_id: int) -> tuple[bytes, str]:
+        import base64
+        res = await self._rpc("getSticker", packId=pack_id, stickerId=int(sticker_id))
+        data = base64.b64decode(res["data"] if isinstance(res, dict) else res)
+        return data, "image/png" if data[:4] == b"\x89PNG" else "image/webp"
+
+    async def join_group(self, uri: str) -> dict:
+        res = await self._rpc("joinGroup", uri=uri) or {}
+        return {"group": res.get("groupId")}
+
+    async def accept_invite(self, group_id: str) -> None:
+        """signal-cli accepts a pending invitation on any group update by the invited account."""
+        await self._rpc("updateGroup", groupId=group_id)
 
     async def edit(self, key, platform_id, parts):
         _, ts = self._split_ts(platform_id)
@@ -553,7 +738,7 @@ class SignalAdapter(MessagingAdapter, CallAdapter):
     async def react(self, key, target, emoji, remove):
         author, ts = self._split_ts(target["platform_id"])
         await self._rpc("sendReaction", **self._to(key), emoji=emoji,
-                        targetAuthor=self.account if author == self.me else author,
+                        targetAuthor=self._target_author(author),
                         targetTimestamp=ts, remove=remove)
 
     async def typing(self, key, on):
