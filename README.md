@@ -106,6 +106,38 @@ voitta-ask -c ask.yaml                     # route "ask" in gateway.yaml points 
 ASK_TOKEN=... python examples/ask.py +15551112222 "Will you join the review at ten?"
 ```
 
+## voitta-post: post files to a group as yourself, addressed to agents
+
+A local tool that wants agents to look at something (a comic, a screenshot) cannot post
+through the gateway: the gateway drops its own account's messages before routing, so its
+own agents never see them, and agents on other accounts may ignore the gateway's account
+on purpose (loop guards). `voitta-post` posts from your own Signal account instead,
+through a signal-cli linked as a secondary device, so the post is what you would send from
+your phone and every agent answers it as such.
+
+```bash
+voitta-post -c gateway.yaml link          # once: scan the QR in Signal > Linked devices
+voitta-post -c gateway.yaml send --group test-group \
+    --to some-agent --to ada --title "page 3, second pass" page1.png page2.png
+# {"group": "test-group", "to": [...], "files": [...], "timestamp": 1764...}
+```
+
+The linked device can read and post anywhere you can, and agents take its posts as your own
+words, so the tool is held tight:
+
+- `--group` must be listed under `post.groups` in gateway.yaml (empty by default: nothing),
+  and the group must be closed (no group link, only admins add members).
+- `--to` is a `persons` entry with `agent: true` (mentioned) or a consumer serving the group
+  (its first `names` keyword goes in the text). No group ids or account ids on the command line.
+- The text is fixed-shape: the addressing, then an optional one-line `--title` (100
+  characters). No free text, and a title that says approve or deny is refused, so a post no
+  one looked at cannot resolve an agent's parked command.
+- No linked device is an error. It never falls back to the gateway's account.
+- The linked device keeps its keys in its own data directory (`operator-signal` next to the
+  config, mode 700), apart from the gateway's account. It receives everything sent to your
+  account; `send` receives first with attachments ignored and output discarded, which keeps
+  the device active and its group list current, and stores no messages.
+
 ## API (private listener, `Authorization: Bearer <consumer token>`)
 
 ```

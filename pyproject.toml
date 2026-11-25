@@ -26,6 +26,7 @@ ask = ["voitta-gateway[service]", "faster-whisper>=1.1", "piper-tts>=1.3"]
 [project.scripts]
 voitta-gateway = "voitta_gateway.__main__:main"
 voitta-ask = "voitta_ask.__main__:main"
+voitta-post = "voitta_gateway.post:main"
 
 [build-system]
 requires = ["hatchling"]

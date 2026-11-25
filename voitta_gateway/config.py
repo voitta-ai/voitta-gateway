@@ -203,6 +203,12 @@ class Speech(BaseModel):
     language: str | None = None                     # None = detect
 
 
+class Post(BaseModel):
+    """voitta-post: the groups it may post into as the linked person. Empty: none. The linked
+    device can read and post anywhere the person can, so the tool is held to this list."""
+    groups: list[str] = []                          # conversations labels (Signal)
+
+
 class Listen(BaseModel):
     api: str = "127.0.0.1:8700"                     # private: commands, events, admin
     ingress: str | None = None                      # public: Telnyx webhooks + media, Slack call pages
@@ -219,6 +225,7 @@ class Config(BaseModel):
     persons: dict[str, Person] = {}
     policy: Policy = Policy()
     speech: Speech | None = None
+    post: Post = Post()
     idempotency_ttl_s: int = 24 * 3600
     max_send_attempts: int = 5
 
@@ -242,6 +249,10 @@ class Config(BaseModel):
             for name in c.consumers:
                 if name not in self.consumers:
                     raise ValueError(f"conversation {label}: consumer {name!r} is not defined under consumers")
+        for label in self.post.groups:
+            c = self.conversations.get(label)
+            if c is None or c.channel != "signal":
+                raise ValueError(f"post.groups: {label!r} is not a Signal group under conversations")
         for name, a in (("signal", self.adapters.signal), ("slack", self.adapters.slack)):
             if a and a.direct_consumer and a.direct_consumer not in self.consumers:
                 raise ValueError(f"adapters.{name}.direct_consumer {a.direct_consumer!r} is not defined under consumers")

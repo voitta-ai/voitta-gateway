@@ -83,6 +83,11 @@ conversations:
     channel: slack
     key: "<slack-channel-id>"
 
+# voitta-post (posting files as a person through a linked device) may post only into
+# these Signal groups, by label above. Default []: none.
+post:
+  groups: [ops-group]
+
 policy:
   inbound_allowlist: [p_owner]               # default []: everyone else is held; "*" lets everyone through
   calls_allow_unknown: false
