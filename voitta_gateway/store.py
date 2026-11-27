@@ -142,6 +142,7 @@ class Store:
         for col in ("consumer", "sender", "parts", "time", "mentions"):  # databases from before #1 items 3-4
             if col not in have:
                 self.x(f"ALTER TABLE messages ADD COLUMN {col} TEXT")
+        self.x("CREATE TABLE IF NOT EXISTS poll_votes (message_id TEXT PRIMARY KEY, count INTEGER NOT NULL)")
         self.files = path.parent / "files"
         self.files.mkdir(parents=True, exist_ok=True)
 
@@ -215,6 +216,11 @@ class Store:
             return self.one("SELECT * FROM messages WHERE conversation_id=? AND platform_id=?",
                             conversation_id, platform_id)
         return self.one("SELECT * FROM messages WHERE platform_id=?", platform_id)
+
+    def next_vote(self, mid: str) -> int:
+        """This account's next vote number on a poll: Signal keeps the vote with the highest count."""
+        self.x("INSERT INTO poll_votes VALUES (?, 1) ON CONFLICT(message_id) DO UPDATE SET count = count + 1", mid)
+        return self.one("SELECT count FROM poll_votes WHERE message_id=?", mid)["count"]
 
     def set_message(self, mid: str, **fields) -> None:
         cols = ", ".join(f"{k}=?" for k in fields)

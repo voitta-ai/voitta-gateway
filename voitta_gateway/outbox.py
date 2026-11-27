@@ -88,10 +88,12 @@ class Outbox:
             elif op == "react":
                 await adapter.react(payload["key"], payload["target"], payload["emoji"],
                                     payload.get("remove", False))
+            elif op == "act":                                     # poll votes and ends, pins, the timer
+                await adapter.act(payload["key"], payload["act"], payload)
             store.x("UPDATE outbox SET done=1 WHERE message_id=?", oid)
             if op != "send":
-                events.append("operation.done", src, {"op_id": oid, "op": op, "conversation_id": cid,
-                                                       **who}, subject=cid)
+                events.append("operation.done", src, {"op_id": oid, "op": payload.get("act", op),
+                                                       "conversation_id": cid, **who}, subject=cid)
         except Exception as e:
             attempts = row["attempts"] + 1
             permanent = isinstance(e, PermanentError) or attempts >= self.gw.cfg.max_send_attempts
@@ -104,8 +106,9 @@ class Outbox:
                                                           "status": "failed", "error": str(e)[:500], **who},
                                   subject=cid)
                 else:
-                    events.append("operation.failed", src, {"op_id": oid, "op": op, "conversation_id": cid,
-                                                            "error": str(e)[:500], **who}, subject=cid)
+                    events.append("operation.failed", src, {"op_id": oid, "op": payload.get("act", op),
+                                                            "conversation_id": cid, "error": str(e)[:500], **who},
+                                  subject=cid)
             else:
                 backoff = min(60, 2 ** attempts)
                 store.x("UPDATE outbox SET attempts=?, next_at=? WHERE message_id=?",
