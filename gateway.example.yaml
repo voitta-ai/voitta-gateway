@@ -71,7 +71,9 @@ persons:
     phone: ["+15551112222"]
 
 # Groups (Signal groups, Slack channels) are closed unless listed: an unlisted
-# one produces no events and nothing is stored. Direct messages are governed by
+# one produces no events and nothing is stored, except one admin-only
+# group.invited notice (group id and name) when the Signal account is invited
+# to it. Direct messages are governed by
 # policy.inbound_allowlist instead.
 conversations:
   ops-group:
