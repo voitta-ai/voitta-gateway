@@ -162,8 +162,8 @@ paths:
       description: |
         Only consumers under `post.consumers`, only into groups under `post.groups`, and only while
         the group is closed (no group link, only admins add members): 403 `not_a_poster` or
-        `group_not_allowed`, 409 `group_open` or `not_member`. `to` names agents: a person marked
-        `agent: true` is @-mentioned; a consumer serving the group has its first name keyword written
+        `group_not_allowed`, 409 `group_open` or `not_member`. `to` names agents or people: a `persons` entry
+        is @-mentioned; a consumer serving the group has its first name keyword written
         into the text and gets the post as its own `message.received` (same message_id; sender
         `{kind: tool, id: <calling consumer>}`; neutral file names). The text is fixed: the addressing,
         then the optional title (one line, at most 100 characters, never "approve" or "deny"; else 422

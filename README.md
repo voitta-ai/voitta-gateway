@@ -127,7 +127,7 @@ Held tight, by the gateway:
 
 - Only consumers under `post.consumers`, only into groups under `post.groups` (both empty by
   default: nothing), and only while the group is closed (no group link, only admins add members).
-- `to` is a `persons` entry with `agent: true` (mentioned) or a consumer serving the group (its
+- `to` is a `persons` entry, agent or person (mentioned), or a consumer serving the group (its
   first `names` keyword goes in the text, and it gets the event). No group ids or account ids in
   the request.
 - The text has a fixed shape: the addressing, then an optional one-line title of at most 100

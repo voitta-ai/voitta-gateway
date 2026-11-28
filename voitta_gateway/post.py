@@ -9,8 +9,8 @@ gets the post as a `message.received` event of its own. That event has the same 
 the post, and its sender is `{"kind": "tool", "id": <calling consumer>}`, never a person.
 
 Names resolve from gateway.yaml, so no group id or account id appears on the command line or in
-the request. `--group` is a `conversations` label. `--to` is either a person marked
-`agent: true` (mentioned) or a consumer serving the group (its first name keyword is written into
+the request. `--group` is a `conversations` label. `--to` is either a `persons` entry, an agent
+or a person (mentioned), or a consumer serving the group (its first name keyword is written into
 the text, and it gets the event).
 
 Guardrails, enforced by the gateway:
@@ -59,9 +59,7 @@ def resolve(cfg: Config, label: str, names: list[str]) -> tuple[list[str], list[
     for name in names:
         want = name.lower()
         person = next((p for pid, p in cfg.persons.items() if pid.lower() == want), None)
-        if person is not None:
-            if not person.agent:
-                raise PostError(f"{name} is a person, not an agent (persons.{name}.agent is not true)")
+        if person is not None:                           # an agent or a person on Signal: mentioned
             aci = next((a for a in person.signal if is_account(a)), None)
             if not aci:
                 raise PostError(f"persons.{name} has no Signal account id (ACI) to mention")
@@ -140,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("send", help="post files into an allowed group, addressed to agents")
     s.add_argument("--group", required=True, help="a conversations label listed under post.groups")
     s.add_argument("--to", action="append", required=True,
-                   help="an agent (persons, agent: true) or a consumer serving the group; repeat for more")
+                   help="a persons entry (mentioned) or a consumer serving the group; repeat for more")
     s.add_argument("--title", default="", help="one line, at most 100 characters, no approve/deny")
     s.add_argument("files", nargs="+", help="the files to review")
     args = ap.parse_args(argv)
