@@ -83,10 +83,12 @@ conversations:
     channel: slack
     key: "<slack-channel-id>"
 
-# voitta-post (posting files as a person through a linked device) may post only into
-# these Signal groups, by label above. Default []: none.
+# POST /v1/posts (voitta-post): files posted from the gateway account into these
+# Signal groups (by label above), addressed to agents, by these consumers only.
+# Default []: none.
 post:
   groups: [ops-group]
+  consumers: [agent-core]
 
 policy:
   inbound_allowlist: [p_owner]               # default []: everyone else is held; "*" lets everyone through

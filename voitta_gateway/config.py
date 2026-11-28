@@ -204,9 +204,10 @@ class Speech(BaseModel):
 
 
 class Post(BaseModel):
-    """voitta-post: the groups it may post into as the linked person. Empty: none. The linked
-    device can read and post anywhere the person can, so the tool is held to this list."""
+    """POST /v1/posts (voitta-post): files posted from the gateway account into a group, addressed
+    to named agents. Only these consumers may post, only into these groups. Empty: none."""
     groups: list[str] = []                          # conversations labels (Signal)
+    consumers: list[str] = []                       # consumers that may call POST /v1/posts
 
 
 class Listen(BaseModel):
@@ -253,6 +254,9 @@ class Config(BaseModel):
             c = self.conversations.get(label)
             if c is None or c.channel != "signal":
                 raise ValueError(f"post.groups: {label!r} is not a Signal group under conversations")
+        for name in self.post.consumers:
+            if name not in self.consumers:
+                raise ValueError(f"post.consumers: {name!r} is not defined under consumers")
         for name, a in (("signal", self.adapters.signal), ("slack", self.adapters.slack)):
             if a and a.direct_consumer and a.direct_consumer not in self.consumers:
                 raise ValueError(f"adapters.{name}.direct_consumer {a.direct_consumer!r} is not defined under consumers")

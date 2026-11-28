@@ -1,50 +1,42 @@
-"""voitta-post: post files into a Signal group as a person, addressed to agents.
+"""voitta-post: post files into a Signal group, addressed to agents, for them to review.
 
-A post the gateway sends from its own account cannot ask its agents anything:
-the gateway drops its own messages before routing (they are sync copies), and
-agents on other accounts may ignore the gateway's account by design (loop
-guards). So this tool posts from a different account: a signal-cli linked as a
-secondary device to a person's own Signal account. The post is then exactly
-what that person would send from their phone, and every agent treats it so.
+    voitta-post send --group test-group --to some-agent --to ada --title "page 3" a.png b.png
 
-    voitta-post -c gateway.yaml link                      # once: scan the QR in Signal
-    voitta-post -c gateway.yaml send --group test-group \\
-        --to some-agent --to ada --title "page 3, second pass" a.png b.png
+It uploads the files (POST /v1/attachments) and calls POST /v1/posts. The gateway sends the post
+from its own account. An agent on another Signal account is @-mentioned. A consumer of this
+gateway cannot see the account's own posts, because the gateway drops its own envelopes, so it
+gets the post as a `message.received` event of its own. That event has the same message_id as
+the post, and its sender is `{"kind": "tool", "id": <calling consumer>}`, never a person.
 
-Names resolve from gateway.yaml, so neither group ids nor account ids appear on
-the command line: `--group` is a `conversations` label, and `--to` is a person
-marked `agent: true` (mentioned) or a consumer serving the group (its first name
-keyword is written into the text, or under `groups: mention` the gateway's
-account is mentioned too).
+Names resolve from gateway.yaml, so no group id or account id appears on the command line or in
+the request. `--group` is a `conversations` label. `--to` is either a person marked
+`agent: true` (mentioned) or a consumer serving the group (its first name keyword is written into
+the text, and it gets the event).
 
-The linked device can read and post anywhere the person can, and agents take
-what it posts as the person's own words (a trusted user's "approve <id>"
-resolves a parked command). So the tool is held tight:
-- only groups listed under `post.groups` in gateway.yaml, and only while closed
-  (no group link, only admins add members);
-- the text is fixed-shape: the addressing, then an optional one-line title, never
-  free text; a title that says approve or deny is refused;
-- no linked device is an error; it never falls back to the gateway's account.
+Guardrails, enforced by the gateway:
+- only consumers listed under `post.consumers`, and only into groups under `post.groups`, and
+  only while the group is closed (no group link, only admins add members);
+- the text has a fixed shape: the addressing, then an optional one-line title, never free text.
+  A title that says approve or deny is refused;
+- agents see neutral file names (1.png, 2.png, ...), never the uploaded ones.
 
-The linked device has its own signal-cli data directory, separate from the
-gateway's account. It receives everything sent to the person's account, so
-`send` receives first with attachments ignored and the output discarded: that
-keeps the device active and its group state current, and keeps no messages.
+Environment: VOITTA_GATEWAY_URL (default http://127.0.0.1:8700) and VOITTA_POST_TOKEN, the
+calling consumer's token.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 import os
 import re
-import shutil
-import subprocess
 import sys
 import unicodedata
+import urllib.error
+import urllib.request
 from pathlib import Path
 
-from . import config
-from .config import is_account
+from .config import Config, is_account
 
 MARK = chr(0xFFFC)                   # one per mention, as Signal sends them
 MAX_TITLE = 100
@@ -57,54 +49,13 @@ class PostError(Exception):
     pass
 
 
-class Cli:
-    """signal-cli against the linked device's own data directory."""
-
-    def __init__(self, binary: str, data_dir: Path):
-        self.binary = binary
-        self.data_dir = data_dir
-
-    def run(self, *args: str, account: str | None = None, json_out: bool = False,
-            quiet: bool = False, timeout: float = 120) -> str:
-        cmd = [self.binary, "--config", str(self.data_dir)]
-        if account:
-            cmd += ["-a", account]
-        if json_out:
-            cmd += ["-o", "json"]
-        cmd += list(args)
-        p = subprocess.run(cmd, stdout=subprocess.DEVNULL if quiet else subprocess.PIPE,
-                           stderr=subprocess.PIPE, text=True, timeout=timeout)
-        if p.returncode != 0:
-            raise PostError(f"signal-cli {args[0]} failed: {(p.stderr or '').strip()[-500:]}")
-        return p.stdout or ""
-
-    def account(self) -> str:
-        """The one account linked into this data directory. None linked is an error: there is no
-        fallback to any other account."""
-        if not self.data_dir.exists():
-            raise PostError(f"no linked device in {self.data_dir}; run `voitta-post link` first")
-        out = self.run("listAccounts", json_out=True)
-        accounts = [a.get("number") for a in json.loads(out or "[]")] if out.strip() else []
-        if len(accounts) != 1:
-            raise PostError(f"{self.data_dir} holds {len(accounts)} linked accounts; expected exactly one")
-        return accounts[0]
-
-
-def _cli(cfg: config.Config, args) -> Cli:
-    binary = cfg.adapters.signal.binary if cfg.adapters.signal else "signal-cli"
-    return Cli(binary, Path(args.signal_dir).expanduser())
-
-
-def resolve(cfg: config.Config, label: str, names: list[str]) -> tuple[str, list[str], list[str]]:
-    """(group id, mention ids, name keywords) for an allowed group label and the agents named."""
-    if label not in cfg.post.groups:
-        allowed = ", ".join(cfg.post.groups) or "none (post.groups is empty)"
-        raise PostError(f"group {label!r} is not in post.groups; allowed: {allowed}")
-    conv = cfg.conversations[label]                      # config validation: a listed Signal group
-    sig = cfg.adapters.signal
+# ---------------------------------------------------------------- used by the gateway
+def resolve(cfg: Config, label: str, names: list[str]) -> tuple[list[str], list[tuple[str, str]]]:
+    """(ACIs to mention, [(consumer, name keyword)]) for the agents named in a post to `label`."""
+    conv = cfg.conversations[label]
     serving = list(conv.consumers) or list(cfg.consumers)
     mentions: list[str] = []
-    keywords: list[str] = []
+    consumers: list[tuple[str, str]] = []
     for name in names:
         want = name.lower()
         person = next((p for pid, p in cfg.persons.items() if pid.lower() == want), None)
@@ -114,7 +65,8 @@ def resolve(cfg: config.Config, label: str, names: list[str]) -> tuple[str, list
             aci = next((a for a in person.signal if is_account(a)), None)
             if not aci:
                 raise PostError(f"persons.{name} has no Signal account id (ACI) to mention")
-            mentions.append(aci)
+            if aci not in mentions:
+                mentions.append(aci)
             continue
         consumer = next((n for n in serving if want in {
             n.lower(), (cfg.consumers[n].label or "").lower(), *(w.lower() for w in cfg.consumers[n].names)}), None)
@@ -123,131 +75,82 @@ def resolve(cfg: config.Config, label: str, names: list[str]) -> tuple[str, list
         words = cfg.consumers[consumer].names
         if not words:
             raise PostError(f"consumer {consumer} has no name keyword (consumers.{consumer}.names)")
-        keywords.append(words[0])
-        if sig is not None and sig.groups not in ("names", "all") and sig.account not in mentions:
-            mentions.append(sig.account)                 # groups: mention -- the name alone does not address it
-    return conv.key, mentions, keywords
+        if consumer not in {c for c, _ in consumers}:
+            consumers.append((consumer, words[0]))
+    return mentions, consumers
 
 
 def check_title(title: str) -> str:
     """One short line of plain text that cannot approve or deny anything."""
-    title = title.strip()
+    title = (title or "").strip()
     if len(title) > MAX_TITLE:
         raise PostError(f"title is {len(title)} characters; at most {MAX_TITLE}")
     if any(unicodedata.category(ch)[0] == "C" for ch in title):
         raise PostError("title must be one line of plain text (no control or format characters)")
     if FORBIDDEN.search(title):
-        raise PostError("title must not say approve or deny: agents read this post as the person's own words")
+        raise PostError("title must not say approve or deny")
     return title
 
 
-def closed_check(cli: Cli, account: str, group_id: str) -> None:
-    """Refuse a group the linked account is not in, or one that is open: a link, or members
-    other than admins able to add members. The same test the gateway applies to admit: members."""
-    out = cli.run("listGroups", "-d", "-g", group_id, account=account, json_out=True, timeout=60)
-    groups = json.loads(out or "[]") if out.strip() else []
-    g = next((x for x in groups if x.get("id") == group_id), None)
-    if g is None or not g.get("isMember", True):
-        raise PostError("the linked account is not a member of that group")
-    reasons = []
-    if g.get("groupInviteLink"):
-        reasons.append("the group link is on")
-    if g.get("permissionAddMember") != "ONLY_ADMINS":
-        reasons.append("members other than admins can add members")
-    if reasons:
-        raise PostError("refused, the group is not closed: " + "; ".join(reasons))
+def compose(mentions: list[str], keywords: list[str], title: str) -> dict:
+    """The text part: each mention a U+FFFC at the start, then the name keywords, then the title.
+    Mention offsets are UTF-16 code units; U+FFFC and a space are one each."""
+    text = " ".join([MARK] * len(mentions) + keywords + ([title] if title else []))
+    part: dict = {"type": "text", "text": text}
+    if mentions:
+        part["mentions"] = [{"start": 2 * i, "length": 1, "id": m} for i, m in enumerate(mentions)]
+    return part
 
 
-def compose(mentions: list[str], keywords: list[str], title: str) -> tuple[str, list[str]]:
-    """The text and its signal-cli --mention ranges: each mention a U+FFFC at the start, then the
-    name keywords, then the title. Offsets are UTF-16 code units; U+FFFC and a space are one each."""
-    head = [MARK] * len(mentions) + keywords
-    text = " ".join(head + ([title] if title else []))
-    ranges = [f"{2 * i}:1:{m}" for i, m in enumerate(mentions)]
-    return text, ranges
+# ---------------------------------------------------------------- the CLI
+def _call(base: str, token: str, path: str, data: bytes, ctype: str, extra: dict | None = None) -> dict:
+    req = urllib.request.Request(base.rstrip("/") + path, data=data, method="POST",
+                                 headers={"Authorization": f"Bearer {token}", "Content-Type": ctype,
+                                          **(extra or {})})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        raise PostError(f"{path}: HTTP {e.code} {e.read().decode(errors='replace')[:500]}")
 
 
-def cmd_send(cfg: config.Config, args) -> dict:
+def cmd_send(args) -> dict:
     files = [Path(f).expanduser() for f in args.files]
     missing = [str(f) for f in files if not f.is_file()]
     if missing:
         raise PostError(f"not a file: {', '.join(missing)}")
-    if not files:
-        raise PostError("nothing to review: give at least one file")
-    group_id, mentions, keywords = resolve(cfg, args.group, args.to)
-    text, ranges = compose(mentions, keywords, check_title(args.title or ""))
-    cli = _cli(cfg, args)
-    account = cli.account()
-    cli.run("receive", "--timeout", "5", "--ignore-attachments", "--ignore-stories",
-            account=account, quiet=True, timeout=180)
-    closed_check(cli, account, group_id)
-    send = ["send", "-g", group_id, "-m", text, "--attachment", *(str(f) for f in files)]
-    if ranges:
-        send += ["--mention", *ranges]
-    out = cli.run(*send, account=account, json_out=True, timeout=300)
-    ts = None
-    try:
-        ts = json.loads(out).get("timestamp")
-    except (ValueError, AttributeError):
-        pass
-    return {"group": args.group, "to": args.to, "files": [f.name for f in files], "timestamp": ts}
+    token = os.environ.get("VOITTA_POST_TOKEN")
+    if not token:
+        raise PostError("VOITTA_POST_TOKEN is not set (the calling consumer's gateway token)")
+    base = os.environ.get("VOITTA_GATEWAY_URL", "http://127.0.0.1:8700")
+    check_title(args.title or "")                       # fail before uploading; the gateway checks again
+    ids = []
+    for i, f in enumerate(files, 1):
+        ctype = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
+        up = _call(base, token, "/v1/attachments", f.read_bytes(), ctype,
+                   {"X-Filename": f"{i}{f.suffix.lower()}"})
+        ids.append(up["attachment_id"])
+    body = {"group": args.group, "to": args.to, "title": args.title or "", "attachments": ids}
+    return _call(base, token, "/v1/posts", json.dumps(body).encode(), "application/json")
 
 
-def cmd_link(cfg: config.Config, args) -> dict:
-    """Link a new signal-cli device to a person's Signal account: print the link as a QR code
-    (Signal > Settings > Linked devices > +), wait until it is scanned, then fetch groups."""
-    cli = _cli(cfg, args)
-    cli.data_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(cli.data_dir, 0o700)                       # holds the person's account keys
-    p = subprocess.Popen([cli.binary, "--config", str(cli.data_dir), "link", "-n", args.name],
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    uri = (p.stdout.readline() if p.stdout else "").strip()
-    if not uri.startswith("sgnl://"):
-        p.kill()
-        raise PostError(f"signal-cli link did not print a link: {uri or (p.stderr.read() if p.stderr else '')}")
-    if shutil.which("qrencode"):
-        subprocess.run(["qrencode", "-t", "ANSIUTF8", uri], check=False)
-    else:
-        print(uri)
-    print("Scan in Signal: Settings > Linked devices > Link new device. Waiting...", file=sys.stderr)
-    if p.wait() != 0:
-        raise PostError(f"linking failed: {(p.stderr.read() if p.stderr else '').strip()[-500:]}")
-    account = cli.account()
-    cli.run("receive", "--timeout", "15", "--ignore-attachments", "--ignore-stories",
-            account=account, quiet=True, timeout=300)
-    out = cli.run("listGroups", account=account, json_out=True)
-    have = {g.get("id") for g in json.loads(out or "[]")} if out.strip() else set()
-    member_of = sorted(k for k in cfg.post.groups if cfg.conversations[k].key in have)
-    return {"linked": True, "post_groups_member_of": member_of}
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser(prog="voitta-post",
-                                 description="Post files into a Signal group as a person, addressed to agents.")
-    ap.add_argument("--config", "-c", default=os.environ.get("VOITTA_GATEWAY_CONFIG", "gateway.yaml"),
-                    help="gateway.yaml: groups (post.groups), agents and consumers resolve from it")
-    ap.add_argument("--signal-dir", default=os.environ.get("VOITTA_POST_SIGNAL_DIR"),
-                    help="the linked device's signal-cli data directory (default: operator-signal "
-                         "next to the config)")
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="voitta-post", description=(__doc__ or "").split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    lk = sub.add_parser("link", help="link this machine to your Signal account (once)")
-    lk.add_argument("--name", default="voitta-post", help="device name shown in Signal")
-    sd = sub.add_parser("send", help="post files to an allowed group, addressed to agents")
-    sd.add_argument("--group", "-g", required=True, help="a label under post.groups in gateway.yaml")
-    sd.add_argument("--to", "-t", action="append", required=True,
-                    help="an agent: a persons entry with agent: true, or a consumer serving the group")
-    sd.add_argument("--title", default="", help=f"optional one-line title, at most {MAX_TITLE} characters")
-    sd.add_argument("files", nargs="+")
-    args = ap.parse_args()
-    if not args.signal_dir:
-        args.signal_dir = str(Path(args.config).expanduser().resolve().parent / "operator-signal")
+    s = sub.add_parser("send", help="post files into an allowed group, addressed to agents")
+    s.add_argument("--group", required=True, help="a conversations label listed under post.groups")
+    s.add_argument("--to", action="append", required=True,
+                   help="an agent (persons, agent: true) or a consumer serving the group; repeat for more")
+    s.add_argument("--title", default="", help="one line, at most 100 characters, no approve/deny")
+    s.add_argument("files", nargs="+", help="the files to review")
+    args = ap.parse_args(argv)
     try:
-        cfg = config.load(Path(args.config).expanduser())
-        out = cmd_link(cfg, args) if args.cmd == "link" else cmd_send(cfg, args)
-    except (PostError, subprocess.TimeoutExpired) as e:
-        raise SystemExit(f"voitta-post: {e}")
-    print(json.dumps(out))
+        print(json.dumps(cmd_send(args)))
+    except PostError as e:
+        print(f"voitta-post: {e}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
