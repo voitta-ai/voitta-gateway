@@ -634,7 +634,7 @@ components:
         number: {type: [string, "null"]}
         name: {type: [string, "null"]}
         team: {type: [string, "null"]}
-        kind: {type: string, enum: [human, bot], description: "bot: another app's post that mentioned us (Slack)"}
+        kind: {type: string, enum: [human, bot, tool], description: "bot: another app's post that mentioned us (Slack); tool: a POST /v1/posts by the consumer named in id, never a person"}
         contact_name: {type: string, description: "as saved in the Signal account's address book"}
     Part:
       oneOf:

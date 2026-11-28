@@ -167,6 +167,11 @@ def build_api(gw: Gateway) -> FastAPI:
         return idempotent(p, data, lambda: gw.message_op(
             mid, "react", {"emoji": data["emoji"], "remove": bool(data.get("remove"))}, p.name))
 
+    @app.post("/v1/posts")
+    async def post(data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
+        """Files into a closed group from the gateway account, addressed to agents (voitta-post)."""
+        return await idempotent_async(p, data, lambda: gw.post(p.name, data))
+
     @app.post("/v1/messages/{mid}/vote")
     async def vote(mid: str, data: dict = Depends(body), p: Principal = Depends(need("messages:send"))):
         return idempotent(p, data, lambda: gw.message_action(mid, "poll_vote", {"options": data.get("options")}, p.name))

@@ -106,6 +106,35 @@ voitta-ask -c ask.yaml                     # route "ask" in gateway.yaml points 
 ASK_TOKEN=... python examples/ask.py +15551112222 "Will you join the review at ten?"
 ```
 
+## voitta-post: post files to a group, addressed to agents
+
+A local tool that wants agents to look at something (a comic, a screenshot) calls
+`POST /v1/posts`, or `voitta-post`, which uploads the files and makes that call. The gateway
+posts from its own account. An agent on another Signal account is @-mentioned. The gateway
+drops its own account's messages before routing, so its own consumers never see the post
+itself. Each consumer named gets it as its own `message.received` instead, under the post's
+`message_id`, with sender `{"kind": "tool", "id": <calling consumer>}`. It never looks like a
+person.
+
+```bash
+export VOITTA_POST_TOKEN=...            # the calling consumer's token (messages:send)
+voitta-post send --group test-group --to some-agent --to ada \
+    --title "page 3, second pass" page1.png page2.png
+# {"message_id": "msg_...", "status": "queued", "group": "test-group", "mentioned": 1, "delivered_to": ["ada"]}
+```
+
+Held tight, by the gateway:
+
+- Only consumers under `post.consumers`, only into groups under `post.groups` (both empty by
+  default: nothing), and only while the group is closed (no group link, only admins add members).
+- `to` is a `persons` entry, agent or person (mentioned), or a consumer serving the group (its
+  first `names` keyword goes in the text, and it gets the event). No group ids or account ids in
+  the request.
+- The text has a fixed shape: the addressing, then an optional one-line title of at most 100
+  characters. There is no free text, and a title that says approve or deny is refused, so a post
+  no one looked at cannot resolve an agent's parked command.
+- Agents see neutral file names (`1.png`, `2.png`, ...), not the uploaded ones.
+
 ## API (private listener, `Authorization: Bearer <consumer token>`)
 
 ```

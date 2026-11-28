@@ -83,6 +83,13 @@ conversations:
     channel: slack
     key: "<slack-channel-id>"
 
+# POST /v1/posts (voitta-post): files posted from the gateway account into these
+# Signal groups (by label above), addressed to agents, by these consumers only.
+# Default []: none.
+post:
+  groups: [ops-group]
+  consumers: [agent-core]
+
 policy:
   inbound_allowlist: [p_owner]               # default []: everyone else is held; "*" lets everyone through
   calls_allow_unknown: false

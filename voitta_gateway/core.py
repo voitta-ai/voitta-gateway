@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import mimetypes
 import re
 import time
 
@@ -965,6 +966,57 @@ class Gateway:
                             "addressed_to": consumer if consumer is not None else "",  # the gateway's own: admin only
                             "person_id": self.peer_person(cid)}, subject=cid)
         return {"message_id": mid, "conversation_id": cid, "channel": channel, "status": "queued"}
+
+    async def post(self, consumer: str, body: dict) -> dict:
+        """Files posted into a closed group from the gateway account, addressed to named agents
+        (POST /v1/posts, voitta-post). An agent on another account is @-mentioned. A consumer of
+        this gateway never sees the account's own posts, so each one named gets the post as its own
+        `message.received`, under the post's message_id, from a sender of kind "tool"."""
+        from .post import PostError, check_title, compose, resolve
+        pc = self.cfg.post
+        if consumer not in pc.consumers:
+            raise ApiError(403, "not_a_poster", f"{consumer} is not listed under post.consumers")
+        label = body.get("group")
+        if label not in pc.groups:
+            raise ApiError(403, "group_not_allowed", f"{label!r} is not listed under post.groups")
+        names, aids = body.get("to"), body.get("attachments")
+        if not isinstance(names, list) or not names or not all(isinstance(n, str) for n in names):
+            raise ApiError(422, "bad_to", "to is a non-empty list of agent names")
+        if not isinstance(aids, list) or not aids or not all(isinstance(a, str) for a in aids):
+            raise ApiError(422, "bad_attachments", "attachments is a non-empty list of attachment ids")
+        files = [self.store.file(a) for a in aids]
+        if not all(files):
+            raise ApiError(422, "unknown_attachment", "an attachment id is unknown")
+        try:
+            mentions, consumers = resolve(self.cfg, label, names)
+            text = compose(mentions, [w for _, w in consumers], check_title(body.get("title") or ""))
+        except PostError as e:
+            raise ApiError(422, "bad_post", str(e))
+        try:
+            info = await self._group_info(label)
+        except NotMember as e:
+            raise ApiError(409, "not_member", str(e))
+        except Exception as e:
+            getattr(self, "_openness", {}).pop(label, None)
+            raise ApiError(503, "unavailable", type(e).__name__)
+        if info["open"]:
+            raise ApiError(409, "group_open", "refused, the group is not closed: " + "; ".join(info["open"]))
+        conv = self.cfg.conversations[label]
+        sent = self.send_message(None, {"to": {"conversation": label},
+                                        "parts": [text] + [{"type": "file", "attachment_id": a} for a in aids]})
+        mid, cid = sent["message_id"], sent["conversation_id"]
+        self.store.set_message(mid, consumer=consumer)            # history shows who posted it
+        # Agents see neutral file names: whatever the uploader called a file is not theirs to read
+        parts = [dict(text)] + [{"type": "file", "attachment_id": f["id"], "content_type": f["content_type"],
+                                 "filename": f"{i}{mimetypes.guess_extension(f['content_type'] or '') or ''}",
+                                 "size": f["size"]} for i, f in enumerate(files, 1)]
+        for name, _ in consumers:
+            self.events.append("message.received", self.source(conv.channel), {
+                "message_id": mid, "conversation_id": cid, "channel": conv.channel,
+                "conversation_kind": "group", "sender": {"kind": "tool", "id": consumer, "name": consumer},
+                "person_id": None, "parts": parts, "reply_to": None, "thread": None, "addressed": True,
+                "conversation": label, "addressed_to": name}, subject=cid)
+        return {**sent, "group": label, "mentioned": len(mentions), "delivered_to": [n for n, _ in consumers]}
 
     def _labelled(self, consumer: str | None, parts: list[dict]) -> list[dict]:
         """Prefix the consumer's label, so people in a shared conversation can tell agents apart."""
